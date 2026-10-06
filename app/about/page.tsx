@@ -86,18 +86,18 @@ export default function AboutPage() {
               {/* Brand hierarchy */}
               <div className="flex flex-col items-center gap-3">
                 <div className="rounded-xl border-2 border-primary bg-primary/10 px-6 py-3 text-center">
-                  <p className="font-display font-bold text-lg text-primary">METABONEXA</p>
-                  <p className="text-xs text-muted-foreground">Health Technology Company</p>
+                  <p className="font-display font-bold text-lg text-primary">Synora Health</p>
+                  <p className="text-xs text-muted-foreground">Parent Company</p>
                 </div>
                 <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90" />
                 <div className="rounded-xl border-2 border-accent bg-accent/10 px-6 py-3 text-center">
-                  <p className="font-display font-bold text-lg text-accent">GENOGLUCO</p>
-                  <p className="text-xs text-muted-foreground">AI Diabetes Health Platform</p>
+                  <p className="font-display font-bold text-lg text-accent">GenoGluco</p>
+                  <p className="text-xs text-muted-foreground">First Product &mdash; AI Diabetes Health Platform</p>
                 </div>
                 <ArrowRight className="h-5 w-5 text-muted-foreground rotate-90" />
                 <div className="rounded-xl border-2 border-foreground/20 bg-foreground/5 px-6 py-3 text-center">
-                  <p className="font-display font-bold text-lg">NEXAFUSION AI&trade;</p>
-                  <p className="text-xs text-muted-foreground">Multimodal AI Intelligence</p>
+                  <p className="font-display font-bold text-lg">Synora Intelligence&trade;</p>
+                  <p className="text-xs text-muted-foreground">AI Technology Platform</p>
                 </div>
               </div>
 

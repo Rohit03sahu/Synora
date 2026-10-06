@@ -102,7 +102,7 @@ export default function HomePage() {
               <ArrowRight className="h-4 w-4 text-primary" />
               <span className="rounded-lg border border-primary bg-primary/10 px-3 py-1.5 font-semibold text-primary">GENOGLUCO</span>
               <ArrowRight className="h-4 w-4 text-primary" />
-              <span className="rounded-lg border border-accent bg-accent/10 px-3 py-1.5 font-semibold text-accent">NEXAFUSION AI&trade;</span>
+              <span className="rounded-lg border border-accent bg-accent/10 px-3 py-1.5 font-semibold text-accent">SYNORA INTELLIGENCE&trade;</span>
               <ArrowRight className="h-4 w-4 text-primary" />
               <span className="rounded-lg border border-success bg-success/10 px-3 py-1.5 font-semibold text-success">PERSONALIZED INSIGHTS</span>
             </div>
