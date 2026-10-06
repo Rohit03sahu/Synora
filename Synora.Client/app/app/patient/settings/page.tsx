@@ -9,15 +9,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { apiGet, apiWrite } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase-client';
 
 export default function SettingsPage() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [email, setEmail] = useState(profile?.email || '');
   const [phone, setPhone] = useState(profile?.phone || '');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+  const [notifications, setNotifications] = useState({
+    assessmentUpdates: true,
+    dataSourceAlerts: true,
+    labProcessing: true,
+    weeklySummary: false,
+    productUpdates: false,
+  });
 
   useEffect(() => {
     if (profile) {
@@ -27,30 +35,55 @@ export default function SettingsPage() {
     }
   }, [profile]);
 
+  useEffect(() => {
+    if (!user) return;
+    apiGet<typeof notifications>('/notifications')
+      .then(setNotifications)
+      .catch((error: unknown) => {
+        console.error('Could not load notification preferences.', error);
+        toast.error(error instanceof Error ? error.message : 'Could not load notification preferences.');
+      });
+  }, [user]);
+
   const handleSaveProfile = async () => {
     if (!user) return;
     setSavingProfile(true);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ full_name: fullName, phone })
-      .eq('id', user.id);
-    setSavingProfile(false);
-    if (error) {
-      toast.error('Could not save profile');
-    } else {
+    try {
+      await apiWrite('/me', 'PUT', { fullName, phone });
+      await refreshProfile();
       toast.success('Profile updated');
+    } catch (error) {
+      console.error('Could not save profile.', error);
+      toast.error(error instanceof Error ? error.message : 'Could not save profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    setSavingNotifications(true);
+    try {
+      await apiWrite('/notifications', 'PUT', notifications);
+      toast.success('Notification preferences saved');
+    } catch (error) {
+      console.error('Could not save notification preferences.', error);
+      toast.error(error instanceof Error ? error.message : 'Could not save notification preferences.');
+    } finally {
+      setSavingNotifications(false);
     }
   };
 
   const handleDeleteAccount = async () => {
     if (!user) return;
-    const { error } = await supabase.from('profiles').delete().eq('id', user.id);
-    if (error) {
-      toast.error('Could not delete account. Please contact support.');
+    try {
+      await apiWrite('/account-deletion-requests', 'POST');
+      toast.success('Account deletion request submitted');
+      await signOut();
+    } catch (error) {
+      console.error('Could not request account deletion.', error);
+      toast.error(error instanceof Error ? error.message : 'Could not delete account. Please contact support.');
       return;
     }
-    toast.success('Account deletion requested');
-    await signOut();
   };
 
   return (
@@ -102,20 +135,30 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {[
-            { label: 'Assessment updates', desc: 'When a new assessment is ready', default: true },
-            { label: 'Data source alerts', desc: 'When a data source needs attention', default: true },
-            { label: 'Lab report processing', desc: 'When lab extraction is complete', default: true },
-            { label: 'Weekly summary', desc: 'Weekly health summary email', default: false },
-            { label: 'Product updates', desc: 'New features and announcements', default: false },
+            { key: 'assessmentUpdates', label: 'Assessment updates', desc: 'When a new assessment is ready' },
+            { key: 'dataSourceAlerts', label: 'Data source alerts', desc: 'When a data source needs attention' },
+            { key: 'labProcessing', label: 'Lab report processing', desc: 'When lab extraction is complete' },
+            { key: 'weeklySummary', label: 'Weekly summary', desc: 'Weekly health summary email' },
+            { key: 'productUpdates', label: 'Product updates', desc: 'New features and announcements' },
           ].map((item) => (
             <div key={item.label} className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">{item.label}</p>
                 <p className="text-xs text-muted-foreground">{item.desc}</p>
               </div>
-              <Switch defaultChecked={item.default} />
+              <Switch
+                checked={notifications[item.key as keyof typeof notifications]}
+                onCheckedChange={(checked) => setNotifications((current) => ({
+                  ...current,
+                  [item.key]: checked,
+                }))}
+              />
             </div>
           ))}
+          <Button onClick={handleSaveNotifications} disabled={savingNotifications}>
+            <Save className="mr-2 h-4 w-4" />
+            {savingNotifications ? 'Saving...' : 'Save Notification Preferences'}
+          </Button>
         </CardContent>
       </Card>
 

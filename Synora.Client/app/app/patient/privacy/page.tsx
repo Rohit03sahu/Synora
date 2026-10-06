@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase-client';
+import { apiGet, apiWrite } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 
 const consentItems = [
@@ -25,7 +25,7 @@ interface AuditEntry {
   id: string;
   action: string;
   actor: string;
-  created_at: string;
+  createdAt: string;
 }
 
 export default function PrivacyPage() {
@@ -46,35 +46,35 @@ export default function PrivacyPage() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data: consentData } = await supabase
-        .from('consent_settings')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (consentData) {
+      try {
+        const [consentData, auditData] = await Promise.all([
+          apiGet<{
+            labData: boolean;
+            cgmData: boolean;
+            genomicData: boolean;
+            lifestyleData: boolean;
+            insulinDeviceData: boolean;
+            shareWithDoctor: boolean;
+            researchParticipation: boolean;
+          }>('/consent'),
+          apiGet<AuditEntry[]>('/audit?limit=10'),
+        ]);
         setConsents({
-          lab_data: consentData.lab_data,
-          cgm_data: consentData.cgm_data,
-          genomic_data: consentData.genomic_data,
-          lifestyle_data: consentData.lifestyle_data,
-          insulin_device_data: consentData.insulin_device_data,
-          share_with_doctor: consentData.share_with_doctor,
-          research_participation: consentData.research_participation,
+          lab_data: consentData.labData,
+          cgm_data: consentData.cgmData,
+          genomic_data: consentData.genomicData,
+          lifestyle_data: consentData.lifestyleData,
+          insulin_device_data: consentData.insulinDeviceData,
+          share_with_doctor: consentData.shareWithDoctor,
+          research_participation: consentData.researchParticipation,
         });
+        setAuditTrail(auditData);
+      } catch (error) {
+        console.error('Could not load privacy settings from the API.', error);
+        toast.error(error instanceof Error ? error.message : 'Could not load privacy settings.');
+      } finally {
+        setLoading(false);
       }
-
-      const { data: auditData } = await supabase
-        .from('audit_trail')
-        .select('id, action, actor, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      if (auditData) {
-        setAuditTrail(auditData as AuditEntry[]);
-      }
-      setLoading(false);
     })();
   }, [user]);
 
@@ -85,21 +85,23 @@ export default function PrivacyPage() {
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
-    const { error } = await supabase.from('consent_settings').upsert({
-      user_id: user.id,
-      ...consents,
-    });
-    if (error) {
-      toast.error('Could not save consent settings');
-    } else {
-      await supabase.from('audit_trail').insert({
-        user_id: user.id,
-        action: 'Consent settings updated',
-        actor: user.email || 'User',
+    try {
+      await apiWrite('/consent', 'PUT', {
+        labData: consents.lab_data,
+        cgmData: consents.cgm_data,
+        genomicData: consents.genomic_data,
+        lifestyleData: consents.lifestyle_data,
+        insulinDeviceData: consents.insulin_device_data,
+        shareWithDoctor: consents.share_with_doctor,
+        researchParticipation: consents.research_participation,
       });
       toast.success('Consent settings saved');
+    } catch (error) {
+      console.error('Could not save consent settings.', error);
+      toast.error(error instanceof Error ? error.message : 'Could not save consent settings.');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const formatDate = (iso: string) => {
@@ -207,7 +209,7 @@ export default function PrivacyPage() {
                     <p className="text-xs text-muted-foreground">by {entry.actor}</p>
                   </div>
                 </div>
-                <span className="text-xs text-muted-foreground">{formatDate(entry.created_at)}</span>
+                <span className="text-xs text-muted-foreground">{formatDate(entry.createdAt)}</span>
               </div>
             ))
           )}

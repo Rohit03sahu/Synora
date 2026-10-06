@@ -31,8 +31,9 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import { mockCGMMetrics, mockGlucoseTrendData, mockTimeInRange, mockDailyPattern, mockGlucoseVariability } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { useApiData } from '@/hooks/use-api-data';
+import type { CGMMetric } from '@/lib/types';
 
 const timeFilters = ['7 Days', '14 Days', '30 Days', '90 Days'];
 
@@ -41,6 +42,55 @@ const statusColors = { good: 'text-success', warning: 'text-warning', critical: 
 
 export default function CGMDashboard() {
   const [timeFilter, setTimeFilter] = useState('14 Days');
+  const days = Number.parseInt(timeFilter, 10);
+  const { data, error, loading } = useApiData<CgmResponse>(`/cgm?days=${days}`);
+  const readings = data?.readings ?? [];
+  const groupedByDay = new Map<string, number[]>();
+  const groupedByHour = new Map<number, number[]>();
+  readings.forEach((reading) => {
+    const timestamp = new Date(reading.recordedAt);
+    const day = timestamp.toISOString().slice(0, 10);
+    const dayValues = groupedByDay.get(day) ?? [];
+    dayValues.push(reading.glucoseMgDl);
+    groupedByDay.set(day, dayValues);
+    const hour = timestamp.getUTCHours();
+    const hourValues = groupedByHour.get(hour) ?? [];
+    hourValues.push(reading.glucoseMgDl);
+    groupedByHour.set(hour, hourValues);
+  });
+  const dailyReadings = Array.from(groupedByDay.entries()).sort(([left], [right]) => left.localeCompare(right));
+  const glucoseTrendData = dailyReadings.map(([day, values]) => ({
+    day: new Date(`${day}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+    average: Math.round(average(values)),
+    low: Math.round(Math.min(...values)),
+    high: Math.round(Math.max(...values)),
+  }));
+  const glucoseValues = readings.map((reading) => reading.glucoseMgDl);
+  const averageGlucose = average(glucoseValues);
+  const timeInRange = glucoseValues.length
+    ? [
+        { name: 'In Range (70-180)', value: percentage(glucoseValues.filter((value) => value >= 70 && value <= 180).length, glucoseValues.length), color: 'hsl(var(--chart-4))' },
+        { name: 'Above Range (>180)', value: percentage(glucoseValues.filter((value) => value > 180).length, glucoseValues.length), color: 'hsl(var(--chart-3))' },
+        { name: 'Below Range (<70)', value: percentage(glucoseValues.filter((value) => value < 70).length, glucoseValues.length), color: 'hsl(var(--chart-5))' },
+      ]
+    : [];
+  const cgmMetrics: CGMMetric[] = glucoseValues.length
+    ? [
+        { label: 'Average Glucose', value: averageGlucose.toFixed(0), unit: 'mg/dL', trend: 'stable', status: averageGlucose <= 140 ? 'good' : averageGlucose <= 180 ? 'warning' : 'critical' },
+        { label: 'Time in Range', value: String(timeInRange[0].value), unit: '%', trend: 'stable', status: timeInRange[0].value >= 70 ? 'good' : timeInRange[0].value >= 50 ? 'warning' : 'critical' },
+        { label: 'Time Above Range', value: String(timeInRange[1].value), unit: '%', trend: 'stable', status: timeInRange[1].value <= 25 ? 'good' : 'warning' },
+        { label: 'Time Below Range', value: String(timeInRange[2].value), unit: '%', trend: 'stable', status: timeInRange[2].value <= 4 ? 'good' : 'warning' },
+        { label: 'Glucose Variability', value: glucoseValues.length > 1 ? coefficientOfVariation(glucoseValues).toFixed(0) : '0', unit: '%', trend: 'stable', status: glucoseValues.length > 1 && coefficientOfVariation(glucoseValues) <= 36 ? 'good' : 'warning' },
+        { label: 'GMI', value: (3.31 + 0.02392 * averageGlucose).toFixed(1), unit: '%', trend: 'stable', status: 'warning' },
+      ]
+    : [];
+  const glucoseVariability = dailyReadings.map(([day, values]) => ({
+    day: new Date(`${day}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+    cv: coefficientOfVariation(values),
+  }));
+  const dailyPattern = Array.from(groupedByHour.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([hour, values]) => ({ hour: `${hour}:00`, glucose: Math.round(average(values)) }));
 
   return (
     <div className="space-y-6">
@@ -67,7 +117,7 @@ export default function CGMDashboard() {
 
       {/* Metric cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-        {mockCGMMetrics.map((metric) => {
+        {cgmMetrics.map((metric) => {
           const TrendIcon = trendIcons[metric.trend];
           return (
             <Card key={metric.label}>
@@ -88,6 +138,17 @@ export default function CGMDashboard() {
         })}
       </div>
 
+      {error && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {!loading && !error && readings.length === 0 && (
+        <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+          No CGM readings are available for this period. Connect a CGM or import readings to view glucose trends.
+        </div>
+      )}
+
       {/* Glucose trend chart */}
       <Card>
         <CardHeader>
@@ -96,7 +157,7 @@ export default function CGMDashboard() {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={mockGlucoseTrendData}>
+            <AreaChart data={glucoseTrendData}>
               <defs>
                 <linearGradient id="avgGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
@@ -127,8 +188,8 @@ export default function CGMDashboard() {
           <CardContent>
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie data={mockTimeInRange} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2}>
-                  {mockTimeInRange.map((entry, i) => (
+                <Pie data={timeInRange} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2}>
+                  {timeInRange.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
                   ))}
                 </Pie>
@@ -136,7 +197,7 @@ export default function CGMDashboard() {
               </PieChart>
             </ResponsiveContainer>
             <div className="mt-2 space-y-1.5">
-              {mockTimeInRange.map((item) => (
+              {timeInRange.map((item) => (
                 <div key={item.name} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
@@ -157,7 +218,7 @@ export default function CGMDashboard() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={mockGlucoseVariability}>
+              <BarChart data={glucoseVariability}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="day" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
@@ -178,7 +239,7 @@ export default function CGMDashboard() {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={mockDailyPattern}>
+            <LineChart data={dailyPattern}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="hour" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" interval={2} />
               <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
@@ -192,4 +253,24 @@ export default function CGMDashboard() {
       </Card>
     </div>
   );
+}
+
+interface CgmResponse {
+  days: number;
+  readings: { id: string; recordedAt: string; glucoseMgDl: number; source: string }[];
+}
+
+function average(values: number[]) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function percentage(part: number, whole: number) {
+  return Math.round((part / whole) * 100);
+}
+
+function coefficientOfVariation(values: number[]) {
+  const mean = average(values);
+  if (mean === 0 || values.length < 2) return 0;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return (Math.sqrt(variance) / mean) * 100;
 }

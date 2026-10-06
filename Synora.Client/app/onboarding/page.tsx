@@ -24,7 +24,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase-client';
+import { apiWrite } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
 
 const steps = [
@@ -99,26 +99,23 @@ export default function OnboardingPage() {
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from('onboarding_data').upsert({
-      user_id: user.id,
-      personal_info: formData.personal,
-      medical_history: formData.medical,
-      family_history: formData.family,
-      lifestyle: formData.lifestyle,
-      diabetes_history: formData.diabetes,
-      devices: formData.devices,
-      completed: true,
-    });
-    setSaving(false);
-    if (error) {
-      toast.error('Could not save your profile. Please try again.');
+    try {
+      await apiWrite('/onboarding', 'PUT', {
+        personalInfo: formData.personal,
+        medicalHistory: formData.medical,
+        familyHistory: formData.family,
+        lifestyle: formData.lifestyle,
+        diabetesHistory: formData.diabetes,
+        devices: formData.devices,
+        completed: true,
+      });
+    } catch (error) {
+      console.error('Could not save onboarding data.', error);
+      toast.error(error instanceof Error ? error.message : 'Could not save your profile. Please try again.');
+      setSaving(false);
       return;
     }
-    await supabase.from('audit_trail').insert({
-      user_id: user.id,
-      action: 'Onboarding completed',
-      actor: user.email || 'User',
-    });
+    setSaving(false);
     toast.success('Health profile saved!');
     router.push('/app/patient');
   };

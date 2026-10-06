@@ -2,93 +2,112 @@
 
 import Link from 'next/link';
 import {
-  Brain,
-  FlaskConical,
   Activity,
+  ArrowRight,
   Dna,
   FileText,
-  ArrowRight,
-  TrendingUp,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
+  FlaskConical,
+  Syringe,
+  Watch,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { MedicalDisclaimer } from '@/components/shared/medical-disclaimer';
+import { useApiData } from '@/hooks/use-api-data';
 import { useAuth } from '@/lib/auth-context';
+import type { LabResult, RiskLevel } from '@/lib/types';
 
-const quickActions = [
-  { label: 'Upload Lab Report', desc: 'Add new lab results', icon: FlaskConical, href: '/app/patient/lab-upload', color: 'text-chart-1' },
-  { label: 'View CGM Data', desc: 'Glucose intelligence', icon: Activity, href: '/app/patient/cgm', color: 'text-chart-2' },
-  { label: 'Run AI Assessment', desc: 'Synora Intelligence analysis', icon: Brain, href: '/app/patient/assessment', color: 'text-chart-3' },
-  { label: 'View Reports', desc: 'Health intelligence report', icon: FileText, href: '/app/patient/reports', color: 'text-chart-4' },
+interface StoredAssessment {
+  id: string;
+  assessedAt: string;
+  riskLevel: RiskLevel;
+  score: number | null;
+  modelVersion: string;
+  summary: string;
+}
+
+interface InsulinData {
+  events: unknown[];
+  basalRates: unknown[];
+}
+
+interface CgmReading {
+  id: string;
+}
+
+interface CgmData {
+  readings: CgmReading[];
+}
+
+const actions = [
+  { label: 'Add Lab Result', desc: 'Record a verified result', icon: FlaskConical, href: '/app/patient/lab-upload' },
+  { label: 'View CGM Data', desc: 'Review stored glucose readings', icon: Activity, href: '/app/patient/cgm' },
+  { label: 'Genomics', desc: 'Review stored variants', icon: Dna, href: '/app/patient/genomics' },
+  { label: 'Health Record', desc: 'Review saved health information', icon: FileText, href: '/app/patient/reports' },
 ];
 
-const dataSources = [
-  { name: 'Lab Reports', status: 'connected', completeness: 100 },
-  { name: 'CGM', status: 'connected', completeness: 85 },
-  { name: 'Genomics', status: 'partial', completeness: 40 },
-  { name: 'Insulin / Devices', status: 'not_connected', completeness: 0 },
-  { name: 'Lifestyle', status: 'connected', completeness: 70 },
-  { name: 'Clinical (EHR)', status: 'partial', completeness: 55 },
+const sourceLinks = [
+  { label: 'Laboratory results', href: '/app/patient/lab-upload', icon: FlaskConical },
+  { label: 'CGM readings', href: '/app/patient/cgm', icon: Activity },
+  { label: 'Genomic variants', href: '/app/patient/genomics', icon: Dna },
+  { label: 'Insulin events', href: '/app/patient/insulin', icon: Syringe },
+  { label: 'Device records', href: '/app/patient/insulin', icon: Watch },
 ];
 
-const statusConfig = {
-  connected: { label: 'Connected', color: 'text-success', icon: CheckCircle2 },
-  partial: { label: 'Partial', color: 'text-warning', icon: AlertCircle },
-  not_connected: { label: 'Not Connected', color: 'text-muted-foreground', icon: Clock },
+const riskStyles: Record<RiskLevel, string> = {
+  lower: 'bg-success/10 text-success',
+  moderate: 'bg-warning/10 text-warning',
+  elevated: 'bg-destructive/10 text-destructive',
 };
 
 export default function PatientDashboard() {
   const { profile } = useAuth();
+  const { data: labs, error: labsError, loading: labsLoading } = useApiData<LabResult[]>('/labs');
+  const { data: cgm, error: cgmError, loading: cgmLoading } = useApiData<CgmData>('/cgm');
+  const { data: variants, error: genomicsError, loading: genomicsLoading } =
+    useApiData<unknown[]>('/genomics');
+  const { data: insulin, error: insulinError, loading: insulinLoading } =
+    useApiData<InsulinData>('/insulin');
+  const { data: devices, error: devicesError, loading: devicesLoading } =
+    useApiData<unknown[]>('/devices');
+  const { data: assessments, error: assessmentsError, loading: assessmentsLoading } =
+    useApiData<StoredAssessment[]>('/assessments');
+
   const firstName = profile?.full_name?.split(' ')[0] || 'there';
+  const latestAssessment = assessments?.[0];
+  const errors = [labsError, cgmError, genomicsError, insulinError, devicesError, assessmentsError].filter(Boolean);
+  const loading = labsLoading || cgmLoading || genomicsLoading || insulinLoading || devicesLoading || assessmentsLoading;
+  const sourceCounts = [
+    labs?.length,
+    cgm?.readings.length,
+    variants?.length,
+    insulin?.events?.length,
+    devices?.length,
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Welcome */}
       <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight">
-          Welcome back, {firstName}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Your GenoGluco health intelligence overview
-        </p>
+        <h1 className="font-display text-2xl font-bold tracking-tight">Welcome back, {firstName}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">A summary of information currently saved in your health record.</p>
       </div>
 
-      {/* Profile completeness */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base">Profile Completeness</CardTitle>
-              <CardDescription className="text-sm">Complete your profile for better AI insights</CardDescription>
-            </div>
-            <span className="text-2xl font-bold text-primary">82%</span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Progress value={82} className="h-2" />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Add genomic data and connect insulin devices to reach 100%
-          </p>
-        </CardContent>
-      </Card>
+      {errors.map((error) => (
+        <div key={error} role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      ))}
 
-      {/* Quick actions */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {quickActions.map((action) => {
+        {actions.map((action) => {
           const Icon = action.icon;
           return (
             <Link key={action.href} href={action.href}>
-              <Card className="group h-full transition-all hover:shadow-lg hover:border-primary/30 cursor-pointer">
+              <Card className="group h-full transition-all hover:border-primary/30 hover:shadow-lg">
                 <CardContent className="pt-6">
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-muted ${action.color} mb-3 transition-transform group-hover:scale-110`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
+                  <Icon className="mb-3 h-5 w-5 text-primary transition-transform group-hover:scale-110" />
                   <p className="text-sm font-semibold">{action.label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{action.desc}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{action.desc}</p>
                 </CardContent>
               </Card>
             </Link>
@@ -96,35 +115,25 @@ export default function PatientDashboard() {
         })}
       </div>
 
-      {/* Data sources & latest assessment */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Connected Data Sources</CardTitle>
-            <CardDescription>Status of your health data integration</CardDescription>
+            <CardTitle className="text-base">Saved health data</CardTitle>
+            <CardDescription>Counts are based on records returned by your health record API.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {dataSources.map((source) => {
-              const status = statusConfig[source.status as keyof typeof statusConfig];
-              const StatusIcon = status.icon;
+          <CardContent className="space-y-4">
+            {sourceLinks.map((source, index) => {
+              const Icon = source.icon;
+              const count = sourceCounts[index];
               return (
-                <div key={source.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{source.name}</span>
-                      <span className={`flex items-center gap-1 text-xs ${status.color}`}>
-                        <StatusIcon className="h-3 w-3" />
-                        {status.label}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-20">
-                      <Progress value={source.completeness} className="h-1.5" />
-                    </div>
-                    <span className="text-xs text-muted-foreground w-8 text-right">{source.completeness}%</span>
-                  </div>
-                </div>
+                <Link key={source.label} href={source.href} className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <Icon className="h-4 w-4 text-muted-foreground" />{source.label}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {count === undefined ? (loading ? 'Loading...' : 'Unavailable') : `${count} ${count === 1 ? 'record' : 'records'}`}
+                  </span>
+                </Link>
               );
             })}
           </CardContent>
@@ -132,44 +141,33 @@ export default function PatientDashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Latest Assessment</CardTitle>
-            <CardDescription>Synora Intelligence health intelligence</CardDescription>
+            <CardTitle className="text-base">Latest recorded assessment</CardTitle>
+            <CardDescription>Assessments are displayed as recorded; no new assessment is generated here.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg border border-warning/30 bg-warning/5 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">Risk Assessment</p>
-                  <p className="text-xl font-bold text-warning mt-1">Moderate</p>
+          <CardContent>
+            {latestAssessment ? (
+              <div className="space-y-4 rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${riskStyles[latestAssessment.riskLevel]}`}>
+                    {latestAssessment.riskLevel} risk
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(latestAssessment.assessedAt).toLocaleDateString()}
+                  </span>
                 </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning/10">
-                  <TrendingUp className="h-6 w-6 text-warning" />
-                </div>
+                <p className="text-sm">{latestAssessment.summary}</p>
+                <p className="text-xs text-muted-foreground">
+                  Model {latestAssessment.modelVersion} · Score {latestAssessment.score ?? 'not provided'}
+                </p>
+                <Button variant="outline" size="sm" className="w-full" asChild>
+                  <Link href="/app/patient/assessment">View assessment details <ArrowRight className="ml-2 h-3.5 w-3.5" /></Link>
+                </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                Assessment based on available data as of Sep 20, 2026
+            ) : (
+              <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                {assessmentsLoading ? 'Loading assessment records...' : 'No completed assessment is recorded.'}
               </p>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Key contributing factors</span>
-                <span className="font-medium">5 identified</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Data sources used</span>
-                <span className="font-medium">4 of 6</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">Last updated</span>
-                <span className="font-medium">2 days ago</span>
-              </div>
-            </div>
-            <Button variant="outline" size="sm" className="w-full" asChild>
-              <Link href="/app/patient/assessment">
-                View Full Assessment
-                <ArrowRight className="ml-2 h-3.5 w-3.5" />
-              </Link>
-            </Button>
+            )}
           </CardContent>
         </Card>
       </div>

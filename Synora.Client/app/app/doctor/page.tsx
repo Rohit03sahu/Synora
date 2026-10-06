@@ -15,21 +15,15 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { mockPatients } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
+import { useApiData } from '@/hooks/use-api-data';
+import type { DashboardOverview, Patient } from '@/lib/types';
 
 const riskConfig = {
   lower: { label: 'Lower', color: 'text-success bg-success/10' },
   moderate: { label: 'Moderate', color: 'text-warning bg-warning/10' },
   elevated: { label: 'Elevated', color: 'text-destructive bg-destructive/10' },
 };
-
-const quickStats = [
-  { label: 'Total Patients', value: '48', icon: Users },
-  { label: 'Pending Assessments', value: '12', icon: Brain },
-  { label: 'CGM Connected', value: '31', icon: Activity },
-  { label: 'Reports Generated', value: '156', icon: FileText },
-];
 
 const navTabs = [
   { label: 'Patients', href: '/app/doctor' },
@@ -42,6 +36,17 @@ const navTabs = [
 ];
 
 export default function DoctorDashboard() {
+  const { data: overview, error, loading } = useApiData<DashboardOverview>('/dashboard/overview');
+  const patients = overview?.patients ?? [];
+  const riskCount = (name: string) =>
+    overview?.riskDistribution.find((item) => item.name.toLowerCase() === name)?.value ?? 0;
+  const quickStats = [
+    { label: 'Total Patients', value: overview?.stats.totalPatients.toLocaleString() ?? '—', icon: Users },
+    { label: 'Pending Assessments', value: overview?.stats.pendingAssessments.toLocaleString() ?? '—', icon: Brain },
+    { label: 'CGM Adoption', value: `${overview?.stats.cgmAdoption ?? 0}%`, icon: Activity },
+    { label: 'Assessed Patients', value: overview?.stats.assessedPatients.toLocaleString() ?? '—', icon: FileText },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -97,7 +102,7 @@ export default function DoctorDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockPatients.map((patient) => (
+              {patients.map((patient: Patient) => (
                 <TableRow key={patient.id} className="cursor-pointer hover:bg-muted/30">
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -107,14 +112,18 @@ export default function DoctorDashboard() {
                       <span className="text-sm font-medium">{patient.name}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{patient.age}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{patient.age ?? '—'}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{patient.dataAvailable}</TableCell>
                   <TableCell>
-                    <span className={cn('rounded-full px-2.5 py-1 text-xs font-medium capitalize', riskConfig[patient.assessment].color)}>
-                      {riskConfig[patient.assessment].label}
-                    </span>
+                    {patient.assessment ? (
+                      <span className={cn('rounded-full px-2.5 py-1 text-xs font-medium capitalize', riskConfig[patient.assessment].color)}>
+                        {riskConfig[patient.assessment].label}
+                      </span>
+                    ) : <span className="text-xs text-muted-foreground">Not assessed</span>}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{patient.lastUpdated}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {patient.lastUpdated ? new Date(patient.lastUpdated).toLocaleDateString() : '—'}
+                  </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm">
                       <Eye className="h-3.5 w-3.5 mr-1" />
@@ -123,6 +132,11 @@ export default function DoctorDashboard() {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && !error && patients.length === 0 && (
+                <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                  No patients are assigned to your care team.
+                </TableCell></TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -140,19 +154,19 @@ export default function DoctorDashboard() {
           <CardContent className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">High-risk patients</span>
-              <span className="text-lg font-bold text-destructive">8</span>
+              <span className="text-lg font-bold text-destructive">{riskCount('elevated')}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Moderate-risk patients</span>
-              <span className="text-lg font-bold text-warning">16</span>
+              <span className="text-lg font-bold text-warning">{riskCount('moderate')}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Low-risk patients</span>
-              <span className="text-lg font-bold text-success">24</span>
+              <span className="text-lg font-bold text-success">{riskCount('lower')}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Assessments this month</span>
-              <span className="text-lg font-bold">32</span>
+              <span className="text-lg font-bold">{overview?.stats.assessedPatients ?? '—'}</span>
             </div>
           </CardContent>
         </Card>
@@ -177,6 +191,7 @@ export default function DoctorDashboard() {
           </CardContent>
         </Card>
       </div>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
   );
 }

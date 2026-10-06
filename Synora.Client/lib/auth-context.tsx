@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase-client';
+import { apiGet } from '@/lib/api-client';
 import type { UserRole } from '@/lib/types';
 
 interface Profile {
@@ -35,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       if (data.session) {
-        loadProfile(data.session.user.id);
+        loadProfile();
       } else {
         setLoading(false);
       }
@@ -44,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       if (newSession) {
-        (async () => { await loadProfile(newSession.user.id); })();
+        setTimeout(() => { void loadProfile(); }, 0);
       } else {
         setProfile(null);
         setLoading(false);
@@ -54,25 +55,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  const loadProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, phone, role')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (error) {
+  const loadProfile = async () => {
+    try {
+      const data = await apiGet<{
+        id: string;
+        email: string;
+        fullName: string;
+        phone: string | null;
+        role: UserRole;
+      }>('/me');
+      setProfile({
+        id: data.id,
+        email: data.email,
+        full_name: data.fullName,
+        phone: data.phone,
+        role: data.role,
+      });
+    } catch (error) {
+      console.error('Could not load the signed-in user profile from the API.', error);
+      setProfile(null);
+    } finally {
       setLoading(false);
-      return;
     }
-    if (data) {
-      setProfile(data as Profile);
-    }
-    setLoading(false);
   };
 
   const refreshProfile = async () => {
-    if (session) await loadProfile(session.user.id);
+    if (session) await loadProfile();
   };
 
   const signIn = async (email: string, password: string) => {
@@ -87,20 +95,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     phone: string,
     role: UserRole,
   ) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          phone,
+          role,
+        },
+      },
+    });
     if (error) return { error: error.message };
-
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        email,
-        full_name: fullName,
-        phone,
-        role,
-      });
-      if (profileError) return { error: profileError.message };
-    }
-
     return { error: null };
   };
 

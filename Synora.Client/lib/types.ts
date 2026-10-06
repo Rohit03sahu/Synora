@@ -67,9 +67,27 @@ export interface CrossSignalInsight {
 export interface Patient {
   id: string;
   name: string;
-  age: number;
-  lastAssessment: string;
+  age: number | null;
+  lastAssessment: string | null;
   dataAvailable: string;
-  assessment: RiskLevel;
-  lastUpdated: string;
+  assessment: RiskLevel | null;
+  lastUpdated: string | null;
+}
+
+export interface DashboardOverview {
+  stats: {
+    totalPatients: number;
+    assessedPatients: number;
+    pendingAssessments: number;
+    dataCompleteness: number;
+    cgmAdoption: number;
+    members: number;
+    assessments: number;
+    completedSurveys: number;
+    healthTrend: number;
+  };
+  riskDistribution: { name: string; value: number }[];
+  assessmentTrends: { month: string; assessed: number }[];
+  hba1cDistribution: { range: string; patients: number }[];
+  patients: Patient[];
 }

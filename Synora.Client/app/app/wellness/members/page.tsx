@@ -1,64 +1,87 @@
 'use client';
 
-import { Search, Filter, Eye } from 'lucide-react';
+import { useState } from 'react';
+import { Search, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useApiData } from '@/hooks/use-api-data';
+import type { Patient, RiskLevel } from '@/lib/types';
 
-const members = Array.from({ length: 8 }, (_, i) => ({
-  id: `WM-${2000 + i}`,
-  name: ['Alex Brown', 'Jordan Lee', 'Taylor Reed', 'Casey Ward', 'Riley Fox', 'Morgan Hill', 'Quinn Nash', 'Avery Stone'][i],
-  joined: `2026-0${i + 1}-15`,
-  surveys: Math.round(Math.random() * 5 + 1),
-  status: i % 3 === 0 ? 'Active' : i % 3 === 1 ? 'Pending' : 'Inactive',
-}));
+const riskStyles: Record<RiskLevel, string> = {
+  lower: 'bg-success/10 text-success',
+  moderate: 'bg-warning/10 text-warning',
+  elevated: 'bg-destructive/10 text-destructive',
+};
 
 export default function WellnessMembersPage() {
+  const [search, setSearch] = useState('');
+  const path = `/patients${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''}`;
+  const { data: members, error, loading } = useApiData<Patient[]>(path);
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold tracking-tight">Members</h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage your wellness organization members</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Shared patient records available to your organization.
+        </p>
       </div>
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search members..." className="pl-10" />
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search shared members..."
+          aria-label="Search shared members"
+          className="pl-10"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </div>
+      {error && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          {error}
         </div>
-        <Button variant="outline" size="icon"><Filter className="h-4 w-4" /></Button>
-      </div>
+      )}
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Member ID</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead>Surveys</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead></TableHead>
+                <TableHead>Age</TableHead>
+                <TableHead>Available data</TableHead>
+                <TableHead>Latest assessment</TableHead>
+                <TableHead>Last updated</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell className="font-mono text-sm">{m.id}</TableCell>
-                  <TableCell className="text-sm font-medium">{m.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{m.joined}</TableCell>
-                  <TableCell className="text-sm">{m.surveys}</TableCell>
+              {members?.map((member) => (
+                <TableRow key={member.id}>
+                  <TableCell className="font-medium">{member.name}</TableCell>
+                  <TableCell>{member.age ?? '—'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{member.dataAvailable || 'None listed'}</TableCell>
                   <TableCell>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                      m.status === 'Active' ? 'text-success bg-success/10' :
-                      m.status === 'Pending' ? 'text-warning bg-warning/10' : 'text-muted-foreground bg-muted'
-                    }`}>{m.status}</span>
+                    {member.assessment ? (
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${riskStyles[member.assessment]}`}>
+                        {member.assessment}
+                      </span>
+                    ) : '—'}
+                    {member.lastAssessment && <span className="ml-2 text-xs text-muted-foreground">{member.lastAssessment}</span>}
                   </TableCell>
-                  <TableCell><Button variant="ghost" size="sm"><Eye className="h-3.5 w-3.5 mr-1" />View</Button></TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {member.lastUpdated ? new Date(member.lastUpdated).toLocaleDateString() : '—'}
+                  </TableCell>
                 </TableRow>
               ))}
+              {!loading && !members?.length && (
+                <TableRow><TableCell colSpan={5} className="py-10 text-center">
+                  <Users className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No shared member records found.</p>
+                </TableCell></TableRow>
+              )}
             </TableBody>
           </Table>
+          {loading && <p className="p-4 text-sm text-muted-foreground">Loading members...</p>}
         </CardContent>
       </Card>
     </div>

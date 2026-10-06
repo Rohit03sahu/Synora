@@ -16,9 +16,6 @@ import type { UserRole } from '@/lib/types';
 
 const userTypes = [
   { value: 'patient', label: 'Patient' },
-  { value: 'doctor', label: 'Doctor' },
-  { value: 'hospital', label: 'Hospital' },
-  { value: 'wellness', label: 'Wellness Organization' },
 ];
 
 export default function SignUpPage() {
@@ -172,6 +169,9 @@ export default function SignUpPage() {
               ))}
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">
+            Clinician, hospital, and wellness accounts are provisioned by an administrator.
+          </p>
         </div>
 
         <div className="space-y-3 rounded-lg border border-border p-4">
