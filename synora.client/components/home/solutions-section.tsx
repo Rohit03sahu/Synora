@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { enabledFeatures } from '@/lib/features';
 
 const solutions = [
   {
@@ -50,9 +51,17 @@ const solutions = [
 ];
 
 export function SolutionsSection() {
+  const visibleSolutions = solutions.filter((solution) =>
+    solution.id === 'hospitals'
+      ? enabledFeatures.hospitals
+      : solution.id === 'wellness'
+        ? enabledFeatures.wellness
+        : true,
+  );
+
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-      {solutions.map((solution) => {
+      {visibleSolutions.map((solution) => {
         const Icon = solution.icon;
         return (
           <Card key={solution.id} className="group flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-primary/30">

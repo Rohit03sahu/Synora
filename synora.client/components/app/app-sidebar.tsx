@@ -88,8 +88,8 @@ export function AppSidebar() {
   };
 
   const sidebarContent = (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border/60 p-4">
+    <div className="flex h-full flex-col bg-card/90">
+      <div className="flex items-center justify-between border-b border-border/70 p-5">
         <Link href="/">
           <GenoGlucoLogo size="sm" />
         </Link>
@@ -98,8 +98,8 @@ export function AppSidebar() {
         </button>
       </div>
 
-      <div className="px-4 py-3">
-        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+      <div className="mx-3 my-4 rounded-2xl border border-border/70 bg-muted/40 px-4 py-3">
+        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary">
           GenoGluco {roleLabel}
         </span>
         {profile && (
@@ -107,7 +107,7 @@ export function AppSidebar() {
         )}
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
+      <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 pb-4">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href;
@@ -117,10 +117,10 @@ export function AppSidebar() {
               href={item.href}
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
                 active
-                  ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  ? 'bg-primary text-primary-foreground shadow-md shadow-primary/15'
+                  : 'text-muted-foreground hover:translate-x-0.5 hover:bg-muted hover:text-foreground'
               )}
             >
               <Icon className="h-4 w-4 flex-shrink-0" />

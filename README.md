@@ -12,6 +12,15 @@ Configure the API with the following environment variables (see `synora.server.i
 
 Keep the API key server-side; do not add it to client environment variables. OCR is unavailable until all three settings are configured.
 
+### Product feature flags
+
+The hospital and wellness experiences are disabled by default. Set these client build environment variables to `true` to show each experience; restart the development server or rebuild/redeploy after changing them:
+
+- `NEXT_PUBLIC_FEATURE_HOSPITALS_ENABLED=true`
+- `NEXT_PUBLIC_FEATURE_WELLNESS_ENABLED=true`
+
+The flags control public solution cards, footer links, onboarding role choices, and access to the corresponding `/app/hospital` and `/app/wellness` routes.
+
 ### OCR API contract
 
 `POST /api/labs/ocr` accepts an authenticated `multipart/form-data` request with one `file` field containing a PNG, JPEG, or WebP image (maximum 10 MB). The API checks the file signature and supported media type before sending it to Foundry.

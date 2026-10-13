@@ -7,6 +7,7 @@ import { SynoraHealthLogo } from '@/components/shared/logo';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { enabledFeatures } from '@/lib/features';
 
 const roles = [
   { id: 'patient', label: 'Patient', icon: User, desc: 'Understand your health and risk', href: '/sign-up' },
@@ -18,6 +19,13 @@ const roles = [
 export default function GetStartedPage() {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(null);
+  const availableRoles = roles.filter((role) =>
+    role.id === 'hospital'
+      ? enabledFeatures.hospitals
+      : role.id === 'wellness'
+        ? enabledFeatures.wellness
+        : true,
+  );
 
   const handleContinue = () => {
     if (!selected) return;
@@ -48,7 +56,7 @@ export default function GetStartedPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {roles.map((role) => {
+              {availableRoles.map((role) => {
                 const Icon = role.icon;
                 const isSelected = selected === role.id;
                 return (

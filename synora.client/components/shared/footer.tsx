@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { SynoraHealthLogo } from './logo';
+import { enabledFeatures } from '@/lib/features';
 
 const footerSections = [
   {
@@ -7,8 +8,8 @@ const footerSections = [
     links: [
       { label: 'Patients', href: '/solutions#patients' },
       { label: 'Doctors', href: '/solutions#doctors' },
-      { label: 'Hospitals', href: '/solutions#hospitals' },
-      { label: 'Wellness', href: '/solutions#wellness' },
+      ...(enabledFeatures.hospitals ? [{ label: 'Hospitals', href: '/solutions#hospitals' }] : []),
+      ...(enabledFeatures.wellness ? [{ label: 'Wellness', href: '/solutions#wellness' }] : []),
     ],
   },
   {
