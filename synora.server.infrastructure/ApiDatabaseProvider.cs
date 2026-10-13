@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using Npgsql;
 
-namespace Synora.Server.Api;
+namespace Synora.Server.Infrastructure;
 
 public sealed class ApiDatabaseProvider : IAsyncDisposable
 {

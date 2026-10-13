@@ -1,10 +1,10 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
-using Npgsql;
 using Synora.Server.Api;
+using Synora.Server.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddSingleton<ApiDatabaseProvider>();
+builder.Services.AddSynoraInfrastructure();
 
 builder.Services.AddHttpClient(SupabaseTokenAuthenticationHandler.HttpClientName);
 builder.Services
@@ -31,41 +31,17 @@ var app = builder.Build();
 app.UseCors("client");
 app.UseAuthentication();
 app.UseAuthorization();
-app.Use(async (context, next) =>
+app.UseDatabaseExceptionHandling();
+app.MapGet("/health", async (
+    ApiDatabaseProvider database,
+    CancellationToken cancellationToken) =>
 {
-    try
-    {
-        await next();
-    }
-    catch (DatabaseNotConfiguredException)
-    {
-        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-        await context.Response.WriteAsJsonAsync(new
-        {
-            title = "Database is not configured",
-            detail = "Configure ConnectionStrings:Postgres to enable this API.",
-            status = StatusCodes.Status503ServiceUnavailable,
-        });
-    }
-});
-
-app.MapGet("/health", async (ApiDatabaseProvider database, CancellationToken cancellationToken) =>
-{
-    try
-    {
-        await using var connection = await database.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("SELECT 1", connection);
-        await command.ExecuteScalarAsync(cancellationToken);
-        return Results.Ok(new { status = "ok", database = "connected" });
-    }
-    catch (Exception exception) when (exception is NpgsqlException or DatabaseNotConfiguredException)
-    {
-        return Results.Problem(
-            title: exception is DatabaseNotConfiguredException
-                ? "Database is not configured"
-                : "Database unavailable",
+    var health = await DatabaseHealthService.CheckAsync(database, cancellationToken);
+    return health.IsConnected
+        ? Results.Ok(new { status = "ok", database = "connected" })
+        : Results.Problem(
+            title: health.IsConfigured ? "Database unavailable" : "Database is not configured",
             statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
 });
 
 var api = app.MapGroup("/api").RequireAuthorization();

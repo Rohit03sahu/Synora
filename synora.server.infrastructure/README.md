@@ -28,6 +28,8 @@ The API listens on port `5247` in the supplied launch profile. `/health` checks 
 
 The API does not use a service-role key. It validates each bearer token with Supabase Auth and scopes user data operations to the authenticated identity. Clinician and organization patient lists additionally require a trusted profile role, an assigned care-team/organization membership, and patient sharing consent.
 
+HTTP routes and request binding remain in `synora.server.api`. PostgreSQL connections, queries, mutations, and health checks are implemented in `synora.server.infrastructure`, which owns the Npgsql dependency.
+
 New accounts are created as `patient` by the auth trigger. Doctor, hospital, and wellness roles must be assigned by an administrator; a role selected in public signup metadata is never trusted.
 
 ## API surface

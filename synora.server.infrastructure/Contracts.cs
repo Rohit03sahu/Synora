@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Synora.Server.Api;
+namespace Synora.Server.Infrastructure;
 
 public sealed record ProfileUpdateRequest(string FullName, string? Phone);
 
