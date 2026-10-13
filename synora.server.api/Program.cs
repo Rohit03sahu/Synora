@@ -47,6 +47,7 @@ app.MapGet("/health", async (
 var api = app.MapGroup("/api").RequireAuthorization();
 api.MapProfileEndpoints();
 api.MapPatientDataEndpoints();
+api.MapLabOcrEndpoints();
 api.MapDashboardEndpoints();
 
 app.Run();

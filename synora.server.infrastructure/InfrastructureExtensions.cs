@@ -1,9 +1,16 @@
+using Synora.Server.Infrastructure.Ocr;
+
 namespace Synora.Server.Infrastructure;
 
 public static class InfrastructureExtensions
 {
-    public static IServiceCollection AddSynoraInfrastructure(this IServiceCollection services) =>
+    public static IServiceCollection AddSynoraInfrastructure(this IServiceCollection services)
+    {
         services.AddSingleton<ApiDatabaseProvider>();
+        services.AddHttpClient<FoundryOcrService>(client =>
+            client.Timeout = TimeSpan.FromSeconds(90));
+        return services;
+    }
 
     public static IApplicationBuilder UseDatabaseExceptionHandling(this IApplicationBuilder app)
     {

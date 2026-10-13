@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { FileText, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { apiGet, apiSend, apiWrite } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import type { LabResult } from '@/lib/types';
+import { extractLabResults } from '@/lib/ocr-api';
+import type { LabResult, OcrLabResult } from '@/lib/types';
 
 const statusColors = {
   normal: 'text-success bg-success/10',
@@ -35,7 +36,12 @@ export default function LabUploadPage() {
   const [draft, setDraft] = useState(emptyLabResult);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [ocrFile, setOcrFile] = useState<File | null>(null);
+  const [ocrResults, setOcrResults] = useState<OcrLabResult[]>([]);
+  const [extracting, setExtracting] = useState(false);
+  const [savingOcrResults, setSavingOcrResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ocrFileInput = useRef<HTMLInputElement>(null);
 
   const refreshResults = async () => {
     setResults(await apiGet<LabResult[]>('/labs'));
@@ -84,12 +90,69 @@ export default function LabUploadPage() {
     }
   };
 
+  const handleExtract = async () => {
+    if (!ocrFile) return;
+    setError(null);
+    setExtracting(true);
+    try {
+      const extracted = await extractLabResults(ocrFile);
+      setOcrResults(extracted);
+      if (extracted.length) {
+        toast.success(`Found ${extracted.length} possible lab result${extracted.length === 1 ? '' : 's'}`);
+      } else {
+        toast.info('No readable lab results were found in that image.');
+      }
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Could not read the lab report.';
+      setError(message);
+      console.error('Could not extract lab results from the report image.', reason);
+      toast.error(message);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const updateOcrResult = (index: number, field: keyof OcrLabResult, value: string) => {
+    setOcrResults((current) => current.map((result, row) =>
+      row === index ? { ...result, [field]: value } : result));
+  };
+
+  const handleSaveOcrResults = async () => {
+    setError(null);
+    setSavingOcrResults(true);
+    try {
+      await apiSend<{ ids: string[] }>('/labs', ocrResults);
+      setOcrResults([]);
+      setOcrFile(null);
+      if (ocrFileInput.current) ocrFileInput.current.value = '';
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Could not save lab results.';
+      setError(message);
+      console.error('Could not save reviewed OCR lab results.', reason);
+      toast.error(message);
+      setSavingOcrResults(false);
+      return;
+    }
+
+    try {
+      await refreshResults();
+      toast.success('Reviewed lab results saved');
+    } catch (reason) {
+      const message = 'Lab results were saved, but the list could not be refreshed.';
+      setError(message);
+      console.error('Could not refresh lab results after saving OCR results.', reason);
+      toast.error(message);
+    } finally {
+      setSavingOcrResults(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold tracking-tight">Laboratory Results</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Add verified results to your health record. Automated document extraction is not configured.
+          Review results from your reports and add them to your health record.
         </p>
       </div>
 
@@ -98,6 +161,110 @@ export default function LabUploadPage() {
           {error}
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText className="h-4 w-4" />
+            Extract results from a report
+          </CardTitle>
+          <CardDescription>
+            Upload a clear PNG, JPEG, or WebP image (up to 10 MB). Foundry OCR suggestions must be
+            checked by you before they are saved.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="lab-report-image">Lab report image</Label>
+              <Input
+                id="lab-report-image"
+                ref={ocrFileInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => {
+                  setOcrFile(event.target.files?.[0] ?? null);
+                  setOcrResults([]);
+                }}
+              />
+            </div>
+            <Button type="button" disabled={!ocrFile || extracting} onClick={handleExtract}>
+              <Upload className="mr-2 h-4 w-4" />
+              {extracting ? 'Reading report...' : 'Extract with OCR'}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The image is sent to the configured Azure AI Foundry service for extraction and is not saved by Synora.
+            OCR can make mistakes and is not medical advice.
+          </p>
+
+          {ocrResults.length > 0 && (
+            <div className="space-y-4 border-t pt-4">
+              <div>
+                <h3 className="font-medium">Review extracted results</h3>
+                <p className="text-sm text-muted-foreground">
+                  Check every field against your report. Add any missing date or status before saving.
+                </p>
+              </div>
+              <form onSubmit={(event) => {
+                event.preventDefault();
+                void handleSaveOcrResults();
+              }} className="space-y-4">
+                <div className="space-y-4">
+                  {ocrResults.map((result, index) => (
+                    <div key={index} className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`ocr-parameter-${index}`}>Parameter</Label>
+                        <Input id={`ocr-parameter-${index}`} maxLength={120} required value={result.parameter}
+                          onChange={(event) => updateOcrResult(index, 'parameter', event.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`ocr-result-${index}`}>Result</Label>
+                        <Input id={`ocr-result-${index}`} maxLength={80} required value={result.result}
+                          onChange={(event) => updateOcrResult(index, 'result', event.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`ocr-unit-${index}`}>Unit</Label>
+                        <Input id={`ocr-unit-${index}`} maxLength={40} value={result.unit}
+                          onChange={(event) => updateOcrResult(index, 'unit', event.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`ocr-reference-${index}`}>Reference range</Label>
+                        <Input id={`ocr-reference-${index}`} maxLength={120} value={result.reference}
+                          onChange={(event) => updateOcrResult(index, 'reference', event.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`ocr-date-${index}`}>Date</Label>
+                        <Input id={`ocr-date-${index}`} type="date" required value={result.date}
+                          onChange={(event) => updateOcrResult(index, 'date', event.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`ocr-status-${index}`}>Status</Label>
+                        <select
+                          id={`ocr-status-${index}`}
+                          required
+                          value={result.status}
+                          onChange={(event) => updateOcrResult(index, 'status', event.target.value)}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="">Select a status</option>
+                          <option value="normal">Normal</option>
+                          <option value="borderline">Borderline</option>
+                          <option value="high">High</option>
+                          <option value="low">Low</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Button type="submit" disabled={savingOcrResults}>
+                  {savingOcrResults ? 'Saving...' : `Save ${ocrResults.length} reviewed result${ocrResults.length === 1 ? '' : 's'}`}
+                </Button>
+              </form>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

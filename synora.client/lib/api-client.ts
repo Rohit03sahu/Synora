@@ -22,8 +22,13 @@ async function authorizedHeaders(body?: unknown): Promise<Headers> {
 }
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
-  const headers = await authorizedHeaders(init.body);
+  const headers = await authorizedHeaders(
+    typeof init.body === 'string' ? init.body : undefined,
+  );
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+  if (init.body instanceof FormData) {
+    headers.delete('Content-Type');
+  }
 
   let response: Response;
   try {
@@ -70,6 +75,19 @@ export async function apiSend<T>(path: string, body: unknown): Promise<T> {
   const response = await request(path, {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+  if (response.status === 204) {
+    throw new Error(`The API returned no data after POST ${path}.`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export async function apiUpload<T>(path: string, fieldName: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append(fieldName, file);
+  const response = await request(path, {
+    method: 'POST',
+    body: form,
   });
   if (response.status === 204) {
     throw new Error(`The API returned no data after POST ${path}.`);

@@ -40,6 +40,15 @@ export interface LabResult {
   status: 'normal' | 'borderline' | 'high' | 'low';
 }
 
+export interface OcrLabResult {
+  parameter: string;
+  result: string;
+  unit: string;
+  reference: string;
+  date: string;
+  status: LabResult['status'] | '';
+}
+
 export interface CGMMetric {
   label: string;
   value: string;
