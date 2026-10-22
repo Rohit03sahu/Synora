@@ -1,3 +1,4 @@
 [build]
-command = "npx next build"
+base = "synora.client"
+command = "npm run build"
 publish = ".next"
