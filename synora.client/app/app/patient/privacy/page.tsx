@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shield, Lock, Eye, FileCheck, History, Download, CheckCircle2, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { Shield, Lock, Eye, FileCheck, History, CheckCircle2, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -104,6 +105,17 @@ export default function PrivacyPage() {
     }
   };
 
+  const handleDeletionRequest = async () => {
+    if (!user || !window.confirm('Submit a request to delete your account and associated data?')) return;
+    try {
+      await apiWrite('/account-deletion-requests', 'POST');
+      toast.success('Account deletion request submitted');
+    } catch (error) {
+      console.error('Could not submit account deletion request.', error);
+      toast.error(error instanceof Error ? error.message : 'Could not submit the deletion request.');
+    }
+  };
+
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -191,8 +203,8 @@ export default function PrivacyPage() {
           <div className="flex items-center gap-3">
             <History className="h-5 w-5 text-primary" />
             <div>
-              <CardTitle className="text-base">Audit Trail</CardTitle>
-              <CardDescription>Complete record of data access and changes</CardDescription>
+              <CardTitle className="text-base">Recent Access History</CardTitle>
+              <CardDescription>Most recent recorded data access and changes, up to 10 entries</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -223,29 +235,25 @@ export default function PrivacyPage() {
           <CardDescription>Exercise your rights regarding your health data</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center justify-between rounded-lg border border-border p-4">
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
             <div>
-              <p className="text-sm font-medium">Download All My Data</p>
-              <p className="text-xs text-muted-foreground">Export a copy of all your health data</p>
+              <p className="text-sm font-medium">Data export</p>
+              <p className="text-xs text-muted-foreground">Self-service export is not available yet. Contact your organization administrator to request a copy.</p>
             </div>
-            <Button variant="outline" size="sm">
-              <Download className="mr-2 h-3.5 w-3.5" />
-              Export
-            </Button>
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-border p-4">
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
             <div>
               <p className="text-sm font-medium">View Privacy Policy</p>
               <p className="text-xs text-muted-foreground">Read our full privacy policy</p>
             </div>
-            <Button variant="outline" size="sm">View</Button>
+            <Button variant="outline" size="sm" asChild><Link href="/privacy">View</Link></Button>
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-destructive/30 p-4">
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-destructive/30 p-4">
             <div>
-              <p className="text-sm font-medium text-destructive">Delete All My Data</p>
-              <p className="text-xs text-muted-foreground">Permanently remove all health data</p>
+              <p className="text-sm font-medium text-destructive">Request account deletion</p>
+              <p className="text-xs text-muted-foreground">Submit a deletion request for review. This does not immediately erase data.</p>
             </div>
-            <Button variant="destructive" size="sm">Delete</Button>
+            <Button variant="destructive" size="sm" onClick={handleDeletionRequest}>Request deletion</Button>
           </div>
         </CardContent>
       </Card>

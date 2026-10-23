@@ -94,3 +94,8 @@ export async function apiUpload<T>(path: string, fieldName: string, file: File):
   }
   return response.json() as Promise<T>;
 }
+
+export async function apiDownload(path: string): Promise<Blob> {
+  const response = await request(path);
+  return response.blob();
+}

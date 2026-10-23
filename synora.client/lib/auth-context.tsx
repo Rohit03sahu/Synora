@@ -11,7 +11,7 @@ interface Profile {
   email: string;
   full_name: string;
   phone: string | null;
-  role: UserRole;
+  role: UserRole | 'platform_admin';
 }
 
 interface AuthContextValue {

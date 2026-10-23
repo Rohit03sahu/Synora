@@ -49,6 +49,7 @@ api.MapProfileEndpoints();
 api.MapPatientDataEndpoints();
 api.MapLabOcrEndpoints();
 api.MapDashboardEndpoints();
+api.MapDoctorEndpoints();
 
 app.Run();
 

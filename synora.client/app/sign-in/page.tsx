@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, UserRound, Stethoscope } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthLayout } from '@/components/shared/auth-layout';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/lib/auth-context';
+import { apiGet } from '@/lib/api-client';
 
 export default function SignInPage() {
   const router = useRouter();
-  const { signIn, profile } = useAuth();
+  const searchParams = useSearchParams();
+  const { signIn } = useAuth();
+  const [loginRole, setLoginRole] = useState<'patient' | 'doctor'>(
+    searchParams.get('next') === 'doctor-onboarding' ? 'doctor' : 'patient',
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -30,23 +35,47 @@ export default function SignInPage() {
       return;
     }
     toast.success('Welcome back!');
-    const role = profile?.role || 'patient';
-    router.push(`/app/${role}`);
+    if (searchParams.get('next') === 'doctor-onboarding') {
+      router.push('/doctor-onboarding');
+      return;
+    }
+    try {
+      const currentProfile = await apiGet<{ role: string }>('/me');
+      if (searchParams.get('next') === 'doctor-onboarding') {
+        router.push('/doctor-onboarding');
+      } else if (loginRole === 'doctor' && currentProfile.role === 'patient') {
+        router.push('/doctor-onboarding');
+      } else if (loginRole === 'doctor' && currentProfile.role !== 'doctor') {
+        toast.error('This account is not registered as a clinician. Choose Patient sign in or use a clinician account.');
+        setLoading(false);
+      } else if (loginRole === 'patient' && currentProfile.role === 'doctor') {
+        toast.error('This is a clinician account. Opening the clinician workspace.');
+        router.push('/app/doctor');
+      } else {
+        router.push(currentProfile.role === 'platform_admin' ? '/app/admin/doctors' : `/app/${currentProfile.role}`);
+      }
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Signed in, but could not load your account profile.');
+      setLoading(false);
+    }
   };
 
   return (
     <AuthLayout
-      title="Welcome Back"
-      subtitle="Sign in to your GenoGluco account"
+      title={loginRole === 'doctor' ? 'Doctor sign in' : 'Patient sign in'}
+      subtitle={loginRole === 'doctor' ? 'Access your clinician profile, consultation requests, and patient conversations.' : 'Access your health profile, records, and connected care team.'}
       footer={
-        <p className="text-sm text-muted-foreground text-center">
-          Don&rsquo;t have an account?{' '}
-          <Link href="/sign-up" className="font-medium text-primary hover:underline">
-            Create one
-          </Link>
-        </p>
+        <div className="space-y-2 text-center text-sm text-muted-foreground">
+          {loginRole === 'doctor' ? <p>New clinician? <Link href="/doctor-sign-up" className="font-medium text-primary hover:underline">Register for verification</Link></p> : <p>New patient? <Link href="/sign-up" className="font-medium text-primary hover:underline">Create an account</Link></p>}
+          {loginRole === 'doctor' && <p>Patient instead? <button type="button" onClick={() => setLoginRole('patient')} className="font-medium text-primary hover:underline">Patient sign in</button></p>}
+          {loginRole === 'patient' && <p>Clinician instead? <button type="button" onClick={() => setLoginRole('doctor')} className="font-medium text-primary hover:underline">Doctor sign in</button></p>}
+        </div>
       }
     >
+      <div className="grid grid-cols-2 rounded-lg border border-border p-1" role="tablist" aria-label="Sign-in role">
+        <button type="button" role="tab" aria-selected={loginRole === 'patient'} onClick={() => setLoginRole('patient')} className={`flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium ${loginRole === 'patient' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}><UserRound className="h-4 w-4" />Patient</button>
+        <button type="button" role="tab" aria-selected={loginRole === 'doctor'} onClick={() => setLoginRole('doctor')} className={`flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium ${loginRole === 'doctor' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}><Stethoscope className="h-4 w-4" />Doctor</button>
+      </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>

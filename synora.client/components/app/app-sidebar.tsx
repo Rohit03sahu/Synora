@@ -18,6 +18,9 @@ import {
   Menu,
   X,
   ChevronLeft,
+  MessageCircle,
+  Stethoscope,
+  Bell,
 } from 'lucide-react';
 import { GenoGlucoLogo } from '@/components/shared/logo';
 import { cn } from '@/lib/utils';
@@ -26,6 +29,9 @@ import { useAuth } from '@/lib/auth-context';
 const patientNav = [
   { label: 'Dashboard', href: '/app/patient', icon: LayoutDashboard },
   { label: 'Profile', href: '/app/patient/profile', icon: User },
+  { label: 'My Doctors / Find a Doctor', href: '/app/patient/doctors', icon: Stethoscope },
+  { label: 'Consultation Requests', href: '/app/patient/requests', icon: MessageCircle },
+  { label: 'Messages', href: '/app/messages', icon: MessageCircle },
   { label: 'Lab Reports', href: '/app/patient/lab-upload', icon: FlaskConical },
   { label: 'CGM Dashboard', href: '/app/patient/cgm', icon: Activity },
   { label: 'Genomics', href: '/app/patient/genomics', icon: Dna },
@@ -38,6 +44,9 @@ const patientNav = [
 
 const doctorNav = [
   { label: 'Dashboard', href: '/app/doctor', icon: LayoutDashboard },
+  { label: 'Doctor Profile', href: '/doctor-onboarding', icon: Stethoscope },
+  { label: 'Consultation Requests', href: '/app/doctor/requests', icon: MessageCircle },
+  { label: 'Messages', href: '/app/messages', icon: MessageCircle },
   { label: 'Patients', href: '/app/doctor/patients', icon: User },
   { label: 'AI Insights', href: '/app/doctor/insights', icon: Brain },
   { label: 'Reports', href: '/app/doctor/reports', icon: FileText },
@@ -58,7 +67,13 @@ const wellnessNav = [
   { label: 'Settings', href: '/app/wellness/settings', icon: Settings },
 ];
 
-function getNavForPath(pathname: string) {
+const adminNav = [
+  { label: 'Doctor Verification', href: '/app/admin/doctors', icon: Shield },
+  { label: 'Notifications', href: '/app/notifications', icon: Bell },
+];
+
+function getNavForPath(pathname: string, role?: string) {
+  if (role === 'platform_admin' || pathname.startsWith('/app/admin')) return adminNav;
   if (pathname.startsWith('/app/patient')) return patientNav;
   if (pathname.startsWith('/app/doctor')) return doctorNav;
   if (pathname.startsWith('/app/hospital')) return hospitalNav;
@@ -79,8 +94,9 @@ export function AppSidebar() {
   const router = useRouter();
   const { signOut, profile } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const navItems = getNavForPath(pathname);
-  const roleLabel = getRoleLabel(pathname);
+  const navItems = [...getNavForPath(pathname, profile?.role), { label: 'Notifications', href: '/app/notifications', icon: Bell }]
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index);
+  const roleLabel = profile?.role === 'platform_admin' ? 'Administrator' : getRoleLabel(pathname);
 
   const handleSignOut = async () => {
     await signOut();

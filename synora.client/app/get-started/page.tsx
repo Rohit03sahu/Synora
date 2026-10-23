@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { User, Stethoscope, Building2, Leaf, ArrowRight, Check, Sparkles } from 'lucide-react';
 import { SynoraHealthLogo } from '@/components/shared/logo';
 import { Button } from '@/components/ui/button';
@@ -10,14 +10,15 @@ import Link from 'next/link';
 import { enabledFeatures } from '@/lib/features';
 
 const roles = [
-  { id: 'patient', label: 'Patient', icon: User, desc: 'Understand your health and risk', href: '/sign-up' },
-  { id: 'doctor', label: 'Doctor', icon: Stethoscope, desc: 'Connected view of patient data', href: '/sign-up' },
-  { id: 'hospital', label: 'Hospital', icon: Building2, desc: 'Population-level intelligence', href: '/sign-up' },
-  { id: 'wellness', label: 'Wellness Organization', icon: Leaf, desc: 'Preventive wellness insights', href: '/sign-up' },
+  { id: 'patient', label: 'Patient', icon: User, desc: 'Start an assessment with the health information you already have.' },
+  { id: 'doctor', label: 'Doctor / Clinician', icon: Stethoscope, desc: 'Clinical access is arranged through your organization.' },
+  { id: 'hospital', label: 'Hospital', icon: Building2, desc: 'Organization access is provisioned by an administrator.' },
+  { id: 'wellness', label: 'Wellness Organization', icon: Leaf, desc: 'Organization access is provisioned by an administrator.' },
 ];
 
 export default function GetStartedPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [selected, setSelected] = useState<string | null>(null);
   const availableRoles = roles.filter((role) =>
     role.id === 'hospital'
@@ -27,9 +28,16 @@ export default function GetStartedPage() {
         : true,
   );
 
+  useEffect(() => {
+    const requestedRole = searchParams.get('role');
+    if (availableRoles.some((role) => role.id === requestedRole)) setSelected(requestedRole);
+  }, [searchParams]);
+
   const handleContinue = () => {
     if (!selected) return;
-    router.push(`/sign-up?role=${selected}`);
+    if (selected === 'patient') router.push('/sign-up?role=patient');
+    else if (selected === 'doctor') router.push('/doctor-sign-up');
+    else router.push(`/solutions#${selected === 'hospital' ? 'hospitals' : 'wellness'}`);
   };
 
   return (
@@ -52,7 +60,7 @@ export default function GetStartedPage() {
               <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
                 Let&rsquo;s build your health profile.
               </h1>
-              <p className="text-muted-foreground">Who are you?</p>
+              <p className="text-muted-foreground">Choose the path that fits you.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -94,7 +102,7 @@ export default function GetStartedPage() {
 
             <div className="flex justify-center">
               <Button size="lg" disabled={!selected} onClick={handleContinue} className="min-w-[200px]">
-                Continue
+                {selected === 'patient' ? 'Start assessment' : selected === 'doctor' ? 'Clinician sign-in' : selected ? 'Explore organization access' : 'Choose a path'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>

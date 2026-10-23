@@ -62,3 +62,34 @@ public sealed record PatientListItem(
     DateTimeOffset? LastUpdated);
 
 public sealed record AuditItem(Guid Id, string Action, string Actor, DateTimeOffset CreatedAt);
+
+public sealed record DoctorProfileUpdateRequest(
+    string Specialty,
+    string Qualifications,
+    string RegistrationNumber,
+    string IssuingCouncil,
+    int ExperienceYears,
+    string[] Expertise,
+    string Affiliation,
+    string[] Languages,
+    string ClinicAddress,
+    string[] ConsultationModes,
+    decimal? ConsultationFee,
+    string Biography,
+    string[] Interests,
+    JsonElement Availability,
+    string? PhotoUrl);
+
+public sealed record DoctorCredentialUploadRequest(string FileName, string ContentType, string FileBase64);
+public sealed record DoctorReviewRequest(string Decision, string? Note);
+public sealed record ConsultationRequestInput(
+    Guid DoctorId,
+    string ConsultationMode,
+    DateTimeOffset? PreferredAt,
+    string Message,
+    string[] SharedSections,
+    bool HealthDataConsent);
+public sealed record ConsultationResponseInput(string Decision, DateTimeOffset? ScheduledAt);
+public sealed record SharingConsentUpdateRequest(string[] SharedSections, bool HealthDataConsent);
+public sealed record DoctorMessageInput(string Body);
+public sealed record ConversationReportInput(string Reason);

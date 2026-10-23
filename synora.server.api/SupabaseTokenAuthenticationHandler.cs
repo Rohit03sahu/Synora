@@ -77,6 +77,16 @@ public sealed class SupabaseTokenAuthenticationHandler : AuthenticationHandler<A
             {
                 claims.Add(new Claim(ClaimTypes.Email, emailProperty.GetString()!));
             }
+            if (user.RootElement.TryGetProperty("phone", out var phoneProperty) &&
+                phoneProperty.ValueKind == JsonValueKind.String)
+            {
+                claims.Add(new Claim("supabase_phone", phoneProperty.GetString()!));
+            }
+            if (user.RootElement.TryGetProperty("phone_confirmed_at", out var phoneConfirmedProperty) &&
+                phoneConfirmedProperty.ValueKind == JsonValueKind.String)
+            {
+                claims.Add(new Claim("supabase_phone_confirmed_at", phoneConfirmedProperty.GetString()!));
+            }
 
             var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName));
             return AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName));

@@ -30,7 +30,15 @@ The API does not use a service-role key. It validates each bearer token with Sup
 
 HTTP routes and request binding remain in `synora.server.api`. PostgreSQL connections, queries, mutations, and health checks are implemented in `synora.server.infrastructure`, which owns the Npgsql dependency.
 
-New accounts are created as `patient` by the auth trigger. Doctor, hospital, and wellness roles must be assigned by an administrator; a role selected in public signup metadata is never trusted.
+New accounts are created as `patient` by the auth trigger. Clinicians register through `/doctor-sign-up`, verify their email through Supabase Auth and their phone by SMS OTP, then submit a professional profile and credential documents. The API does not trust role metadata; a platform administrator changes the profile role only after reviewing an application.
+
+### Doctor directory and communications
+
+Apply the root `supabase/migrations/20261023120000_doctor_directory_communications.sql` migration after the existing migrations. Configure Supabase Auth email confirmation and an SMS provider for phone OTP; without an SMS provider, doctors cannot submit applications. The first `platform_admin` must be provisioned by a trusted database operator after the administrator account has signed in once and its profile row exists. Do not expose an admin-role setter in the client or public API.
+
+The administrator review interface is `/app/admin/doctors`. Approved clinicians appear in `/app/patient/doctors`; patient requests are handled at `/app/doctor/requests`, and accepted conversations are available at `/app/messages`. The API stores in-app notifications, but email/SMS notifications, live WebSocket delivery, and automatic appointment reminders require providers that are not configured in this repository. No synthetic approved doctors are seeded: directory entries require an authenticated account and administrator credential review.
+
+Doctor APIs include `/doctor/profile`, `/doctor/profile/documents`, `/doctor/profile/submit`, `/doctor/directory`, `/doctor/my-doctors`, `/doctor/requests`, `/doctor/conversations`, and `/doctor/notifications`. Administrator endpoints under `/admin/doctors` enforce the `platform_admin` profile role. Each patient conversation operation verifies participation server-side; health-record sections are returned only while the patient has granted explicit per-request consent.
 
 ## API surface
 

@@ -30,6 +30,7 @@ export default function SignUpPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [userType, setUserType] = useState('');
+  const [roleFromJourney, setRoleFromJourney] = useState(false);
   const [consents, setConsents] = useState({ terms: false, privacy: false, health: false });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -38,13 +39,14 @@ export default function SignUpPage() {
   const [confirm, setConfirm] = useState('');
 
   const availableRoles = (Object.keys(roleMeta) as UserRole[]).filter((role) =>
-    role === 'hospital' ? enabledFeatures.hospitals : role === 'wellness' ? enabledFeatures.wellness : true,
+    role === 'doctor' ? false : role === 'hospital' ? enabledFeatures.hospitals : role === 'wellness' ? enabledFeatures.wellness : true,
   );
 
   useEffect(() => {
     const preselected = searchParams.get('role');
     if (preselected && availableRoles.includes(preselected as UserRole)) {
       setUserType(preselected);
+      setRoleFromJourney(true);
     }
   }, [searchParams]);
 
@@ -115,7 +117,7 @@ export default function SignUpPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="mobile">Mobile</Label>
+          <Label htmlFor="mobile">Mobile <span className="font-normal text-muted-foreground">(optional)</span></Label>
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -123,7 +125,6 @@ export default function SignUpPage() {
               type="tel"
               placeholder="+1 (555) 000-0000"
               className="pl-10"
-              required
               value={mobile}
               onChange={(e) => setMobile(e.target.value)}
             />
@@ -173,28 +174,35 @@ export default function SignUpPage() {
           <p className="text-xs text-destructive">Passwords do not match (minimum 6 characters)</p>
         )}
 
-        <div className="space-y-2">
-          <Label>Account Type</Label>
-          <Select value={userType} onValueChange={setUserType}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select your role" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableRoles.map((role) => (
-                <SelectItem key={role} value={role}>{roleMeta[role].label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {roleFromJourney ? (
+          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+            <p className="text-xs text-muted-foreground">Account type</p>
+            <p className="text-sm font-medium">{roleMeta[userType as UserRole]?.label}</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label>Account Type</Label>
+            <Select value={userType} onValueChange={setUserType}>
+              <SelectTrigger><SelectValue placeholder="Select your role" /></SelectTrigger>
+              <SelectContent>
+                {availableRoles.map((role) => <SelectItem key={role} value={role}>{roleMeta[role].label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {userType !== 'patient' && userType && (
+          <p className="text-xs leading-relaxed text-muted-foreground">Clinical and organization access may require approval or provisioning by your organization administrator.</p>
+        )}
 
         <div className="space-y-3 rounded-lg border border-border p-4">
           <label className="flex items-start gap-3 cursor-pointer">
             <Checkbox checked={consents.terms} onCheckedChange={(v) => setConsents({ ...consents, terms: !!v })} />
-            <span className="text-xs text-muted-foreground leading-relaxed">I agree to the Terms of Service</span>
+            <span className="text-xs text-muted-foreground leading-relaxed">I agree to the <Link href="/terms" className="font-medium text-primary underline underline-offset-2">Terms of Service</Link></span>
           </label>
           <label className="flex items-start gap-3 cursor-pointer">
             <Checkbox checked={consents.privacy} onCheckedChange={(v) => setConsents({ ...consents, privacy: !!v })} />
-            <span className="text-xs text-muted-foreground leading-relaxed">I acknowledge the Privacy Policy</span>
+            <span className="text-xs text-muted-foreground leading-relaxed">I acknowledge the <Link href="/privacy" className="font-medium text-primary underline underline-offset-2">Privacy Policy</Link></span>
           </label>
           <label className="flex items-start gap-3 cursor-pointer">
             <Checkbox checked={consents.health} onCheckedChange={(v) => setConsents({ ...consents, health: !!v })} />
