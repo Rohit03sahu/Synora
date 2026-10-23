@@ -29,7 +29,7 @@ export default function GetStartedPage() {
 
   const handleContinue = () => {
     if (!selected) return;
-    router.push('/sign-up');
+    router.push(`/sign-up?role=${selected}`);
   };
 
   return (

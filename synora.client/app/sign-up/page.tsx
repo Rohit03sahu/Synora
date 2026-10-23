@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, User, Phone, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Mail, Lock, User, Phone, Eye, EyeOff, ArrowRight, Stethoscope, Building2, Leaf } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthLayout } from '@/components/shared/auth-layout';
 import { Button } from '@/components/ui/button';
@@ -12,14 +12,19 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/lib/auth-context';
+import { enabledFeatures } from '@/lib/features';
 import type { UserRole } from '@/lib/types';
 
-const userTypes = [
-  { value: 'patient', label: 'Patient' },
-];
+const roleMeta: Record<UserRole, { label: string; icon: typeof User }> = {
+  patient: { label: 'Patient', icon: User },
+  doctor: { label: 'Doctor / Clinician', icon: Stethoscope },
+  hospital: { label: 'Hospital', icon: Building2 },
+  wellness: { label: 'Wellness Organization', icon: Leaf },
+};
 
 export default function SignUpPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { signUp } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -31,6 +36,17 @@ export default function SignUpPage() {
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+
+  const availableRoles = (Object.keys(roleMeta) as UserRole[]).filter((role) =>
+    role === 'hospital' ? enabledFeatures.hospitals : role === 'wellness' ? enabledFeatures.wellness : true,
+  );
+
+  useEffect(() => {
+    const preselected = searchParams.get('role');
+    if (preselected && availableRoles.includes(preselected as UserRole)) {
+      setUserType(preselected);
+    }
+  }, [searchParams]);
 
   const allConsents = consents.terms && consents.privacy && consents.health;
   const passwordsMatch = password === confirm && password.length >= 6;
@@ -158,20 +174,17 @@ export default function SignUpPage() {
         )}
 
         <div className="space-y-2">
-          <Label>User Type</Label>
+          <Label>Account Type</Label>
           <Select value={userType} onValueChange={setUserType}>
             <SelectTrigger>
               <SelectValue placeholder="Select your role" />
             </SelectTrigger>
             <SelectContent>
-              {userTypes.map((type) => (
-                <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+              {availableRoles.map((role) => (
+                <SelectItem key={role} value={role}>{roleMeta[role].label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground">
-            Clinician, hospital, and wellness accounts are provisioned by an administrator.
-          </p>
         </div>
 
         <div className="space-y-3 rounded-lg border border-border p-4">

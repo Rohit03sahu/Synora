@@ -11,12 +11,17 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiGet, apiWrite } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase-client';
 
 export default function SettingsPage() {
   const { user, profile, signOut, refreshProfile } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [email, setEmail] = useState(profile?.email || '');
   const [phone, setPhone] = useState(profile?.phone || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [notifications, setNotifications] = useState({
@@ -175,26 +180,24 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Current Password</Label>
-            <Input type="password" placeholder="Enter current password" />
+            <Input type="password" placeholder="Enter current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>New Password</Label>
-              <Input type="password" placeholder="Enter new password" />
+              <Input type="password" placeholder="Enter new password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Confirm Password</Label>
-              <Input type="password" placeholder="Confirm new password" />
+              <Input type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
             </div>
           </div>
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium">Two-Factor Authentication</p>
-              <p className="text-xs text-muted-foreground">Add an extra layer of security</p>
-            </div>
-            <Switch />
-          </div>
-          <Button variant="outline">Update Password</Button>
+          {newPassword && confirmPassword && newPassword !== confirmPassword && (
+            <p className="text-xs text-destructive">New passwords do not match</p>
+          )}
+          <Button variant="outline" disabled={savingPassword || !currentPassword || !newPassword || newPassword !== confirmPassword} onClick={handleChangePassword}>
+            {savingPassword ? 'Updating...' : 'Update Password'}
+          </Button>
         </CardContent>
       </Card>
 
