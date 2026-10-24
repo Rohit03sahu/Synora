@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+**/node_modules
+**/.next
+**/bin
+**/obj
+**/*.tsbuildinfo
+**/coverage
+**/TestResults

@@ -51,24 +51,25 @@ export default function SignUpPage() {
   }, [searchParams]);
 
   const allConsents = consents.terms && consents.privacy && consents.health;
-  const passwordsMatch = password === confirm && password.length >= 6;
+  const passwordsMatch = password === confirm && password.length >= 8;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!allConsents || !userType || !passwordsMatch) return;
     setLoading(true);
-    const { error } = await signUp(email, password, name, mobile, userType as UserRole);
+    const { error } = await signUp(email, password, name, mobile);
     if (error) {
+      if (error.startsWith('Your account was created,')) {
+        router.push(`/verify-email?email=${encodeURIComponent(email.trim())}&delivery=failed`);
+        setLoading(false);
+        return;
+      }
       toast.error(error);
       setLoading(false);
       return;
     }
-    toast.success('Account created successfully!');
-    if (userType === 'patient') {
-      router.push('/onboarding');
-    } else {
-      router.push(`/app/${userType}`);
-    }
+    toast.success('Account created. Check your email to verify it before signing in.');
+    router.push(`/verify-email?email=${encodeURIComponent(email.trim())}`);
   };
 
   return (
@@ -139,7 +140,7 @@ export default function SignUpPage() {
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Min 6 chars"
+                placeholder="Min 8 chars"
                 className="pl-10 pr-10"
                 required
                 value={password}
@@ -171,7 +172,7 @@ export default function SignUpPage() {
         </div>
 
         {password && confirm && !passwordsMatch && (
-          <p className="text-xs text-destructive">Passwords do not match (minimum 6 characters)</p>
+          <p className="text-xs text-destructive">Passwords do not match (minimum 8 characters)</p>
         )}
 
         {roleFromJourney ? (

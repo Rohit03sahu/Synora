@@ -31,11 +31,6 @@ CREATE TABLE IF NOT EXISTS doctor_profiles (
 );
 CREATE INDEX IF NOT EXISTS idx_doctor_profiles_directory
   ON doctor_profiles(specialty, verification_status, experience_years);
-ALTER TABLE doctor_profiles ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS doctor_profiles_api_access ON doctor_profiles;
-CREATE POLICY doctor_profiles_api_access ON doctor_profiles FOR ALL TO synora_api
-  USING (true) WITH CHECK (true);
-
 CREATE TABLE IF NOT EXISTS doctor_credential_documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   doctor_id uuid NOT NULL REFERENCES doctor_profiles(user_id) ON DELETE CASCADE,
@@ -49,11 +44,6 @@ CREATE TABLE IF NOT EXISTS doctor_credential_documents (
     CHECK (review_status IN ('pending', 'accepted', 'rejected'))
 );
 CREATE INDEX IF NOT EXISTS idx_doctor_credentials_owner ON doctor_credential_documents(doctor_id);
-ALTER TABLE doctor_credential_documents ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS doctor_credentials_api_access ON doctor_credential_documents;
-CREATE POLICY doctor_credentials_api_access ON doctor_credential_documents FOR ALL TO synora_api
-  USING (true) WITH CHECK (true);
-
 CREATE TABLE IF NOT EXISTS doctor_consultation_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   patient_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -77,11 +67,6 @@ CREATE INDEX IF NOT EXISTS idx_doctor_request_doctor_status
   ON doctor_consultation_requests(doctor_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_doctor_request_patient
   ON doctor_consultation_requests(patient_id, created_at DESC);
-ALTER TABLE doctor_consultation_requests ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS doctor_requests_api_access ON doctor_consultation_requests;
-CREATE POLICY doctor_requests_api_access ON doctor_consultation_requests FOR ALL TO synora_api
-  USING (true) WITH CHECK (true);
-
 CREATE TABLE IF NOT EXISTS doctor_conversations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   request_id uuid NOT NULL UNIQUE REFERENCES doctor_consultation_requests(id) ON DELETE CASCADE,
@@ -93,11 +78,6 @@ CREATE TABLE IF NOT EXISTS doctor_conversations (
 );
 CREATE INDEX IF NOT EXISTS idx_conversations_patient ON doctor_conversations(patient_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conversations_doctor ON doctor_conversations(doctor_id, updated_at DESC);
-ALTER TABLE doctor_conversations ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS doctor_conversations_api_access ON doctor_conversations;
-CREATE POLICY doctor_conversations_api_access ON doctor_conversations FOR ALL TO synora_api
-  USING (true) WITH CHECK (true);
-
 CREATE TABLE IF NOT EXISTS doctor_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id uuid NOT NULL REFERENCES doctor_conversations(id) ON DELETE CASCADE,
@@ -108,11 +88,6 @@ CREATE TABLE IF NOT EXISTS doctor_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_doctor_messages_conversation
   ON doctor_messages(conversation_id, created_at);
-ALTER TABLE doctor_messages ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS doctor_messages_api_access ON doctor_messages;
-CREATE POLICY doctor_messages_api_access ON doctor_messages FOR ALL TO synora_api
-  USING (true) WITH CHECK (true);
-
 CREATE TABLE IF NOT EXISTS in_app_notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -125,22 +100,12 @@ CREATE TABLE IF NOT EXISTS in_app_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
   ON in_app_notifications(user_id, created_at DESC) WHERE read_at IS NULL;
-ALTER TABLE in_app_notifications ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS notifications_api_access ON in_app_notifications;
-CREATE POLICY notifications_api_access ON in_app_notifications FOR ALL TO synora_api
-  USING (true) WITH CHECK (true);
-
 CREATE TABLE IF NOT EXISTS doctor_conversation_blocks (
   conversation_id uuid NOT NULL REFERENCES doctor_conversations(id) ON DELETE CASCADE,
   blocked_by uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (conversation_id, blocked_by)
 );
-ALTER TABLE doctor_conversation_blocks ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS conversation_blocks_api_access ON doctor_conversation_blocks;
-CREATE POLICY conversation_blocks_api_access ON doctor_conversation_blocks FOR ALL TO synora_api
-  USING (true) WITH CHECK (true);
-
 CREATE TABLE IF NOT EXISTS doctor_conversation_reports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   conversation_id uuid NOT NULL REFERENCES doctor_conversations(id) ON DELETE CASCADE,
@@ -149,7 +114,3 @@ CREATE TABLE IF NOT EXISTS doctor_conversation_reports (
   created_at timestamptz NOT NULL DEFAULT now(),
   status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewing', 'resolved'))
 );
-ALTER TABLE doctor_conversation_reports ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS conversation_reports_api_access ON doctor_conversation_reports;
-CREATE POLICY conversation_reports_api_access ON doctor_conversation_reports FOR ALL TO synora_api
-  USING (true) WITH CHECK (true);

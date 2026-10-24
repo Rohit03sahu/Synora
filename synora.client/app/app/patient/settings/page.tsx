@@ -11,7 +11,6 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiGet, apiWrite } from '@/lib/api-client';
 import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase-client';
 
 export default function SettingsPage() {
   const { user, profile, signOut, refreshProfile } = useAuth();
@@ -62,6 +61,21 @@ export default function SettingsPage() {
       toast.error(error instanceof Error ? error.message : 'Could not save profile.');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setSavingPassword(true);
+    try {
+      await apiWrite('/auth/change-password', 'POST', { currentPassword, newPassword });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      toast.success('Password updated');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update your password.');
+    } finally {
+      setSavingPassword(false);
     }
   };
 

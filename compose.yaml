@@ -1,0 +1,77 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-synora}
+      POSTGRES_USER: ${POSTGRES_USER:-synora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./synora.server.infrastructure/Database/Migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: synora.server.api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://+:5247
+      ConnectionStrings__Postgres: Host=db;Port=5432;Database=${POSTGRES_DB:-synora};Username=${POSTGRES_USER:-synora};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      Cors__Origins__0: ${CLIENT_BASE_URL:-http://localhost:3000}
+      Client__BaseUrl: ${CLIENT_BASE_URL:-http://localhost:3000}
+      Email__SmtpHost: ${EMAIL_SMTP_HOST:-}
+      Email__SmtpPort: ${EMAIL_SMTP_PORT:-587}
+      Email__SmtpUsername: ${EMAIL_SMTP_USERNAME:-}
+      Email__SmtpPassword: ${EMAIL_SMTP_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-}
+      Twilio__AccountSid: ${TWILIO_ACCOUNT_SID:-}
+      Twilio__AuthToken: ${TWILIO_AUTH_TOKEN:-}
+      Twilio__FromNumber: ${TWILIO_FROM_NUMBER:-}
+      Foundry__Endpoint: ${FOUNDRY_ENDPOINT:-}
+      Foundry__ApiKey: ${FOUNDRY_API_KEY:-}
+      Foundry__Model: ${FOUNDRY_MODEL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "5247:5247"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5247/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./synora.client
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5247}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

@@ -1,30 +1,31 @@
-import { supabase } from '@/lib/supabase-client';
+import { accessToken, clearUserSession } from '@/lib/user-session';
 
 const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5247').replace(/\/$/, '');
 
-async function authorizedHeaders(body?: unknown): Promise<Headers> {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) {
-    throw new Error(`Could not read the current authentication session: ${error.message}`);
-  }
-  if (!data.session?.access_token) {
+function requestHeaders(body: BodyInit | null | undefined, authenticated: boolean): Headers {
+  const token = authenticated ? accessToken() : null;
+  if (authenticated && !token) {
     throw new Error('Sign in to access your health data.');
   }
 
-  const headers = new Headers({
-    Authorization: `Bearer ${data.session.access_token}`,
-    Accept: 'application/json',
-  });
-  if (body !== undefined) {
+  const headers = new Headers({ Accept: 'application/json' });
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (
+    body !== undefined &&
+    body !== null &&
+    !(typeof FormData !== 'undefined' && body instanceof FormData)
+  ) {
     headers.set('Content-Type', 'application/json');
   }
   return headers;
 }
 
-async function request(path: string, init: RequestInit = {}): Promise<Response> {
-  const headers = await authorizedHeaders(
-    typeof init.body === 'string' ? init.body : undefined,
-  );
+async function request(
+  path: string,
+  init: RequestInit = {},
+  authenticated = true,
+): Promise<Response> {
+  const headers = requestHeaders(init.body, authenticated);
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   if (init.body instanceof FormData) {
     headers.delete('Content-Type');
@@ -43,7 +44,17 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   }
 
   if (!response.ok) {
-    const problem = await response.json().catch(() => null) as { title?: string; detail?: string; errors?: Record<string, string[]> } | null;
+    if (authenticated && response.status === 401) {
+      clearUserSession();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('synora:session-expired'));
+      }
+    }
+    const problem = await response.json().catch(() => null) as {
+      title?: string;
+      detail?: string;
+      errors?: Record<string, string[]>;
+    } | null;
     const validation = problem?.errors
       ? Object.values(problem.errors).flat().join(' ')
       : '';
@@ -51,6 +62,36 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   }
 
   return response;
+}
+
+async function send<T>(
+  path: string,
+  body: unknown,
+  authenticated: boolean,
+): Promise<T> {
+  const response = await request(path, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }, authenticated);
+  if (response.status === 204) {
+    throw new Error(`The API returned no data after POST ${path}.`);
+  }
+  return response.json() as Promise<T>;
+}
+
+async function write(
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body: unknown,
+  authenticated: boolean,
+): Promise<void> {
+  const response = await request(path, {
+    method,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }, authenticated);
+  if (response.status !== 204 && response.status !== 201 && response.status !== 202) {
+    await response.body?.cancel();
+  }
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
@@ -61,25 +102,24 @@ export async function apiGet<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function apiWrite(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<void> {
-  const response = await request(path, {
-    method,
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  if (response.status !== 204 && response.status !== 201 && response.status !== 202) {
-    await response.body?.cancel();
-  }
+export async function apiWrite(
+  path: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  body?: unknown,
+): Promise<void> {
+  return write(path, method, body, true);
+}
+
+export async function apiPublicWrite(path: string, body: unknown): Promise<void> {
+  return write(path, 'POST', body, false);
 }
 
 export async function apiSend<T>(path: string, body: unknown): Promise<T> {
-  const response = await request(path, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-  if (response.status === 204) {
-    throw new Error(`The API returned no data after POST ${path}.`);
-  }
-  return response.json() as Promise<T>;
+  return send<T>(path, body, true);
+}
+
+export async function apiPublicSend<T>(path: string, body: unknown): Promise<T> {
+  return send<T>(path, body, false);
 }
 
 export async function apiUpload<T>(path: string, fieldName: string, file: File): Promise<T> {

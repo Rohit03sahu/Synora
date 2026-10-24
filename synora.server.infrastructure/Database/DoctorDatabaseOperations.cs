@@ -136,20 +136,17 @@ public static class DoctorDatabaseOperations
         ClaimsPrincipal principal, ApiDatabaseProvider database, CancellationToken cancellationToken)
     {
         var userId = ApiUser.Id(principal);
-        var verifiedPhone = principal.FindFirstValue("supabase_phone");
-        var phoneConfirmedAt = principal.FindFirstValue("supabase_phone_confirmed_at");
-        if (string.IsNullOrWhiteSpace(verifiedPhone) || string.IsNullOrWhiteSpace(phoneConfirmedAt))
-            return Results.Conflict(new { message = "Verify your mobile number with the SMS code before submitting." });
-
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         var role = await GetRoleAsync(connection, userId, cancellationToken);
         if (role is not ("patient" or "doctor")) return Results.Forbid();
-        await using (var phone = new NpgsqlCommand("SELECT phone FROM profiles WHERE id=$1", connection))
+        await using (var phone = new NpgsqlCommand(
+            "SELECT phone FROM profiles WHERE id=$1 AND phone_confirmed_at IS NOT NULL",
+            connection))
         {
             phone.Parameters.AddWithValue(userId);
             var profilePhone = await phone.ExecuteScalarAsync(cancellationToken) as string;
-            if (string.IsNullOrWhiteSpace(profilePhone) || NormalizePhone(profilePhone) != NormalizePhone(verifiedPhone))
-                return Results.Conflict(new { message = "The verified mobile number must match your professional profile." });
+            if (string.IsNullOrWhiteSpace(profilePhone))
+                return Results.Conflict(new { message = "Verify your mobile number with the SMS code before submitting." });
         }
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
@@ -996,4 +993,3 @@ public static class DoctorDatabaseOperations
 
     private static IResult Validation(string message) => Results.ValidationProblem(new Dictionary<string, string[]> { ["body"] = [message] });
 }
-

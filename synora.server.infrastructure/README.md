@@ -1,19 +1,28 @@
 # Synora Server API
 
-The ASP.NET Core API serves the authenticated UI with PostgreSQL-backed health records. Supabase Auth remains the identity provider: requests must include a Supabase access token, which the API validates against Supabase Auth before accessing data.
+The ASP.NET Core API serves the authenticated UI and owns account management, access-token validation, and PostgreSQL-backed health records. Synora does not rely on a managed identity provider or hosted database platform.
 
 ## Local setup
 
-1. Apply the SQL migrations in `supabase/migrations/` to the project's Supabase PostgreSQL database, in filename order.
-2. Copy `.env.example` values into your shell or .NET user secrets. Do not commit credentials.
-3. Run the API:
+### Docker Compose
+
+From the repository root, copy `.env.docker.example` to `.env`, set a long random `POSTGRES_PASSWORD`, and run `docker compose up --build`. Compose starts PostgreSQL, applies the numbered migrations to a new database volume, starts the API, and then starts the client. Open `http://localhost:3000`; the API is at `http://localhost:5247`. Set `ASPNETCORE_ENVIRONMENT=Development` in `.env` to enable Swagger at `/swagger` for local use. SMTP and Twilio settings are optional for startup, but required for account email and phone-verification workflows.
+
+The client API URL is embedded at image build time through `NEXT_PUBLIC_API_URL`. For local Docker use, keep it set to `http://localhost:5247` so the browser can reach the published API port. Rebuild the client image after changing this value.
+
+### Manual setup
+
+1. Create a standalone PostgreSQL database and a restricted database login for the API.
+2. Apply the SQL files in `Database/Migrations/` in numeric order to a new database.
+3. Copy `.env.example` values into your shell or .NET user secrets. Do not commit credentials.
+4. Run the API:
 
    ```sh
-   cd Synora.Server.Api
+   cd synora.server.api
    dotnet run
    ```
 
-4. Set `NEXT_PUBLIC_API_URL=http://localhost:5247` in `Synora.Client/.env.local`, then run the client with `npm run dev`.
+5. Set `NEXT_PUBLIC_API_URL=http://localhost:5247` in `synora.client/.env.local`, then run the client with `npm run dev`.
 
 The API listens on port `5247` in the supplied launch profile. `/health` checks the PostgreSQL connection and returns `503` until the database is configured.
 
@@ -21,47 +30,55 @@ The API listens on port `5247` in the supplied launch profile. `/health` checks 
 
 | Variable | Purpose |
 | --- | --- |
-| `ConnectionStrings__Postgres` | PostgreSQL connection string for the API. Use TLS for hosted databases and a restricted API database role. |
-| `Supabase__Url` | Supabase project URL used to validate bearer tokens. |
-| `Supabase__AnonKey` | Supabase publishable/anon key sent with the Auth user-validation request. |
+| `ConnectionStrings__Postgres` | Standalone PostgreSQL connection string. Use TLS for hosted databases and a restricted API database role. |
 | `Cors__Origins__0` | Allowed web-client origin; add each deployed client origin as a separate indexed value. |
+| `Client__BaseUrl` | Public client origin used to generate verification and password-reset links. |
+| `Email__SmtpHost`, `Email__SmtpPort` | SMTP server for account verification and password-reset email. The configured SMTP connection uses TLS. |
+| `Email__SmtpUsername`, `Email__SmtpPassword` | Optional SMTP credentials; set both or neither. |
+| `Email__FromAddress` | Verified sender address for account emails. |
+| `Twilio__AccountSid`, `Twilio__AuthToken`, `Twilio__FromNumber` | Twilio REST credentials and sender number for clinician phone-verification codes. |
+| `Foundry__Endpoint`, `Foundry__ApiKey`, `Foundry__Model` | Azure AI Foundry configuration for lab-report OCR. |
 
-The API does not use a service-role key. It validates each bearer token with Supabase Auth and scopes user data operations to the authenticated identity. Clinician and organization patient lists additionally require a trusted profile role, an assigned care-team/organization membership, and patient sharing consent.
+Keep database, SMTP, Twilio, and Foundry credentials server-side. The client only needs `NEXT_PUBLIC_API_URL`.
 
-HTTP routes and request binding remain in `synora.server.api`. PostgreSQL connections, queries, mutations, and health checks are implemented in `synora.server.infrastructure`, which owns the Npgsql dependency.
+## User management
 
-New accounts are created as `patient` by the auth trigger. Clinicians register through `/doctor-sign-up`, verify their email through Supabase Auth and their phone by SMS OTP, then submit a professional profile and credential documents. The API does not trust role metadata; a platform administrator changes the profile role only after reviewing an application.
+`synora.server.api/UserManagement/` provides email/password registration, email confirmation, sign-in, sign-out, password changes and reset, and phone verification. Passwords are stored as PBKDF2-SHA256 hashes. Sign-in issues a random opaque bearer token; only its SHA-256 hash is stored in PostgreSQL. Sessions expire after seven days, and password resets revoke all sessions.
 
-### Doctor directory and communications
+Email verification and password reset require SMTP configuration. Clinician onboarding requires Twilio configuration and an E.164 phone number. Delivery failures are returned explicitly; account confirmation can be resent from `/verify-email`.
 
-Apply the root `supabase/migrations/20261023120000_doctor_directory_communications.sql` migration after the existing migrations. Configure Supabase Auth email confirmation and an SMS provider for phone OTP; without an SMS provider, doctors cannot submit applications. The first `platform_admin` must be provisioned by a trusted database operator after the administrator account has signed in once and its profile row exists. Do not expose an admin-role setter in the client or public API.
+New registrations always receive the `patient` role. Clinicians register through `/doctor-sign-up`, verify their email and phone, and submit credentials for review. A trusted database operator grants `platform_admin` only after verifying the administrator's account. The API never accepts a role from the public registration request.
 
-The administrator review interface is `/app/admin/doctors`. Approved clinicians appear in `/app/patient/doctors`; patient requests are handled at `/app/doctor/requests`, and accepted conversations are available at `/app/messages`. The API stores in-app notifications, but email/SMS notifications, live WebSocket delivery, and automatic appointment reminders require providers that are not configured in this repository. No synthetic approved doctors are seeded: directory entries require an authenticated account and administrator credential review.
+All account-owned health-data operations are authorized in the API and use the authenticated user ID in database queries. PostgreSQL Row Level Security and provider-specific `auth.users`/`auth.uid()` functions are not used.
 
-Doctor APIs include `/doctor/profile`, `/doctor/profile/documents`, `/doctor/profile/submit`, `/doctor/directory`, `/doctor/my-doctors`, `/doctor/requests`, `/doctor/conversations`, and `/doctor/notifications`. Administrator endpoints under `/admin/doctors` enforce the `platform_admin` profile role. Each patient conversation operation verifies participation server-side; health-record sections are returned only while the patient has granted explicit per-request consent.
+## Existing account migration
+
+The migration directory describes a new standalone PostgreSQL database; it is not a drop-in upgrade for a Supabase database. Back up the source database and plan a controlled export/import of `profiles` and application data, preserving profile UUIDs so existing data relationships remain valid. Supabase-managed password credentials are not migrated by these scripts. Imported profiles need a password reset through the new SMTP flow; completing that reset confirms the email and allows accounts in `pending_verification` to become active. Keep the old service available until imported data and account recovery have been verified.
 
 ## API surface
 
-All routes below `/api` require `Authorization: Bearer <supabase-access-token>`.
+Public account endpoints:
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `GET`, `PUT` | `/me` | Read/update the authenticated profile |
-| `GET`, `PUT` | `/onboarding` | Read/save patient onboarding sections |
-| `GET`, `POST`, `DELETE` | `/labs` | Read, batch-add, and remove owned lab results |
-| `GET`, `PUT` | `/consent` | Read/save consent settings |
-| `GET` | `/audit?limit=50` | Read the caller's recent audit events |
-| `GET`, `POST` | `/cgm` | Read a bounded date range or add CGM readings |
-| `GET`, `POST` | `/insulin`, `/insulin/events`, `/insulin/basal-rates` | Read insulin data, add events, and save basal rates |
-| `GET`, `POST` | `/devices` | Read devices or request a pending provider connection |
-| `GET`, `POST` | `/genomics` | Read/upsert owned genomic variants |
-| `GET` | `/assessments` | Read recorded assessments; patient-supplied assessment scores are not accepted |
-| `GET` | `/patients` | Search/filter only patients visible to the caller's care team or organization |
-| `GET` | `/dashboard/overview` | Role-scoped population summary for hospital/wellness/clinical dashboards |
-| `POST` | `/account-deletion-requests` | Submit an auditable account deletion request |
+| `POST` | `/api/auth/register` | Create a patient account and send a confirmation email |
+| `POST` | `/api/auth/verify-email` | Consume a confirmation token |
+| `POST` | `/api/auth/resend-verification` | Resend a pending confirmation |
+| `POST` | `/api/auth/login` | Verify credentials and issue an opaque session token |
+| `POST` | `/api/auth/password-reset` | Request a password-reset link |
+| `POST` | `/api/auth/password-reset/confirm` | Set a password and revoke existing sessions |
 
-## Data tables
+Authenticated account endpoints:
 
-The existing schema supplies `profiles`, `onboarding_data`, `lab_results`, `consent_settings`, and `audit_trail`. The new migration adds CGM readings, insulin events and basal profiles, genomic variants, device connections, recorded assessments, organization/care-team membership, notification preferences, and account deletion requests, with indexes and Supabase RLS policies.
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/auth/logout` | Revoke the current session |
+| `POST` | `/api/auth/change-password` | Change a password after checking the current password |
+| `POST` | `/api/auth/phone/send-code` | Send a clinician phone-verification code |
+| `POST` | `/api/auth/phone/verify-code` | Verify the phone number |
+
+The remaining `/api` routes require the `Authorization: Bearer <access-token>` header. API routes and request binding live in `synora.server.api`; PostgreSQL connections, queries, and health checks are implemented in `synora.server.infrastructure`, which owns the Npgsql dependency.
+
+The administrator review interface is `/app/admin/doctors`. Approved clinicians appear in `/app/patient/doctors`; patient requests are handled at `/app/doctor/requests`, and accepted conversations are available at `/app/messages`. The API stores in-app notifications, but email/SMS notifications, live WebSocket delivery, and automatic appointment reminders require providers that are not configured in this repository. No synthetic approved doctors are seeded.
 
 The assessment table is a storage contract for a trusted assessment pipeline. This API intentionally provides read-only access to assessment outputs until a validated server-side assessment producer is available.

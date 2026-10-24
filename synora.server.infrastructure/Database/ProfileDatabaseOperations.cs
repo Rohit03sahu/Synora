@@ -11,21 +11,13 @@ public static class ProfileDatabaseOperations
         CancellationToken cancellationToken)
     {
         var userId = ApiUser.Id(principal);
-        var email = principal.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(
-            """
-            INSERT INTO profiles (id, email)
-            VALUES ($1, $2)
-            ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email
-            """,
-            connection);
-        command.Parameters.AddWithValue(userId);
-        command.Parameters.AddWithValue(email);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-
         await using var select = new NpgsqlCommand(
-            "SELECT id, email, full_name, phone, role, created_at FROM profiles WHERE id = $1",
+            """
+            SELECT id, email, full_name, phone, role, created_at, phone_confirmed_at
+            FROM profiles
+            WHERE id = $1
+            """,
             connection);
         select.Parameters.AddWithValue(userId);
         await using var reader = await select.ExecuteReaderAsync(cancellationToken);
@@ -42,6 +34,9 @@ public static class ProfileDatabaseOperations
             phone = reader.IsDBNull(3) ? null : reader.GetString(3),
             role = reader.GetString(4),
             createdAt = reader.GetFieldValue<DateTimeOffset>(5),
+            phoneConfirmedAt = reader.IsDBNull(6)
+                ? (DateTimeOffset?)null
+                : reader.GetFieldValue<DateTimeOffset>(6),
         });
     }
 
@@ -66,7 +61,12 @@ public static class ProfileDatabaseOperations
         await using var command = new NpgsqlCommand(
             """
             UPDATE profiles
-            SET full_name = $2, phone = $3
+            SET full_name = $2,
+                phone_confirmed_at = CASE
+                    WHEN phone IS DISTINCT FROM $3 THEN NULL
+                    ELSE phone_confirmed_at
+                END,
+                phone = $3
             WHERE id = $1
             """,
             connection);

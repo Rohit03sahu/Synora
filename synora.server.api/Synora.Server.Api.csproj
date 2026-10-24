@@ -10,4 +10,8 @@
     <ProjectReference Include="..\synora.server.infrastructure\Synora.Server.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
 </Project>

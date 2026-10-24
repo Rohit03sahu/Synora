@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { FileCheck2, Phone, ShieldCheck, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiGet, apiSend, apiWrite } from '@/lib/api-client';
-import { supabase } from '@/lib/supabase-client';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,7 +30,7 @@ function toBase64(buffer: ArrayBuffer) {
 }
 
 export default function DoctorOnboardingPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshProfile } = useAuth();
   const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -88,16 +87,27 @@ export default function DoctorOnboardingPage() {
   const sendOtp = async () => {
     if (!phone.trim()) { toast.error('Enter a mobile number first.'); return; }
     setSendingOtp(true);
-    const { error } = await supabase.auth.updateUser({ phone: phone.trim() });
-    setSendingOtp(false);
-    if (error) toast.error(error.message);
-    else { setOtpSent(true); toast.success('SMS verification code sent.'); }
+    try {
+      await apiSend('/auth/phone/send-code', { phone: phone.trim() });
+      setOtpSent(true);
+      toast.success('SMS verification code sent.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not send the verification code.');
+    } finally {
+      setSendingOtp(false);
+    }
   };
 
   const verifyPhone = async () => {
-    const { error } = await supabase.auth.verifyOtp({ phone: phone.trim(), token: otp, type: 'phone_change' });
-    if (error) toast.error(error.message);
-    else { setPhoneVerified(true); setOtpSent(false); toast.success('Mobile number verified.'); }
+    try {
+      await apiSend('/auth/phone/verify-code', { phone: phone.trim(), code: otp });
+      setPhoneVerified(true);
+      setOtpSent(false);
+      await refreshProfile();
+      toast.success('Mobile number verified.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not verify the mobile number.');
+    }
   };
 
   const uploadCredential = async (file: File | undefined) => {
@@ -158,7 +168,7 @@ export default function DoctorOnboardingPage() {
       <Card className="rounded-lg"><CardHeader><CardTitle className="text-base">Contact and professional profile</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2"><Label htmlFor="full-name">Full name</Label><Input id="full-name" required maxLength={200} value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>
         <div className="space-y-2"><Label>Email</Label><Input value={user.email ?? ''} readOnly className="bg-muted/40" /></div>
-        <div className="space-y-2"><Label htmlFor="phone">Mobile number</Label><Input id="phone" type="tel" required value={phone} onChange={(event) => { setPhone(event.target.value); setPhoneVerified(false); }} /></div>
+        <div className="space-y-2"><Label htmlFor="phone">Mobile number</Label><Input id="phone" type="tel" placeholder="+14155552671" required value={phone} onChange={(event) => { setPhone(event.target.value); setPhoneVerified(false); }} /></div>
         <div className="space-y-2"><Label>Mobile verification</Label><div className="flex gap-2"><Button type="button" variant="outline" onClick={sendOtp} disabled={sendingOtp || phoneVerified}>{phoneVerified ? 'Verified' : sendingOtp ? 'Sending...' : otpSent ? 'Resend code' : 'Send SMS code'}</Button>{phoneVerified && <span className="self-center text-xs text-success">Verified</span>}</div></div>
         {otpSent && <div className="flex items-end gap-2 sm:col-span-2"><div className="flex-1 space-y-2"><Label htmlFor="phone-otp">SMS code</Label><Input id="phone-otp" inputMode="numeric" autoComplete="one-time-code" value={otp} onChange={(event) => setOtp(event.target.value)} /></div><Button type="button" onClick={verifyPhone} disabled={!otp}>Verify number</Button></div>}
         <div className="space-y-2"><Label htmlFor="specialty">Specialty</Label><select id="specialty" value={specialty} onChange={(event) => setSpecialty(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">{specialtyOptions.map((item) => <option key={item}>{item}</option>)}</select></div>

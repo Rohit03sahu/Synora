@@ -1,9 +1,13 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase-client';
-import { apiGet } from '@/lib/api-client';
+import { apiGet, apiPublicSend, apiPublicWrite, apiWrite } from '@/lib/api-client';
+import {
+  clearUserSession,
+  readUserSession,
+  saveUserSession,
+  UserSession,
+} from '@/lib/user-session';
 import type { UserRole } from '@/lib/types';
 
 interface Profile {
@@ -11,16 +15,24 @@ interface Profile {
   email: string;
   full_name: string;
   phone: string | null;
+  phone_confirmed_at: string | null;
   role: UserRole | 'platform_admin';
+}
+
+interface User {
+  id: string;
+  email: string;
+  phone: string | null;
+  phone_confirmed_at: string | null;
 }
 
 interface AuthContextValue {
   user: User | null;
-  session: Session | null;
+  session: UserSession | null;
   profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, fullName: string, phone: string, role: UserRole) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, fullName: string, phone: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -28,32 +40,10 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<UserSession | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session) {
-        loadProfile();
-      } else {
-        setLoading(false);
-      }
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      if (newSession) {
-        setTimeout(() => { void loadProfile(); }, 0);
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => listener.subscription.unsubscribe();
-  }, []);
 
   const loadProfile = async () => {
     try {
@@ -62,30 +52,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: string;
         fullName: string;
         phone: string | null;
-        role: UserRole;
+        phoneConfirmedAt: string | null;
+        role: UserRole | 'platform_admin';
       }>('/me');
       setProfile({
         id: data.id,
         email: data.email,
         full_name: data.fullName,
         phone: data.phone,
+        phone_confirmed_at: data.phoneConfirmedAt,
         role: data.role,
+      });
+      setUser({
+        id: data.id,
+        email: data.email,
+        phone: data.phone,
+        phone_confirmed_at: data.phoneConfirmedAt,
       });
     } catch (error) {
       console.error('Could not load the signed-in user profile from the API.', error);
       setProfile(null);
+      setUser(null);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const expireSession = () => {
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+    };
+    window.addEventListener('synora:session-expired', expireSession);
+    const savedSession = readUserSession();
+    if (!savedSession) {
+      setLoading(false);
+      return () => window.removeEventListener('synora:session-expired', expireSession);
+    }
+
+    setSession(savedSession);
+    void loadProfile();
+    return () => window.removeEventListener('synora:session-expired', expireSession);
+  }, []);
 
   const refreshProfile = async () => {
     if (session) await loadProfile();
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
+    try {
+      const result = await apiPublicSend<UserSession>('/auth/login', { email, password });
+      saveUserSession(result);
+      setSession(result);
+      setLoading(true);
+      await loadProfile();
+      return { error: null };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Could not sign in.' };
+    }
   };
 
   const signUp = async (
@@ -93,31 +119,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     phone: string,
-    role: UserRole,
   ) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-          phone,
-          role,
-        },
-      },
-    });
-    if (error) return { error: error.message };
-    return { error: null };
+    try {
+      await apiPublicWrite('/auth/register', {
+        email,
+        password,
+        fullName,
+        phone: phone.trim() || null,
+      });
+      return { error: null };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Could not create the account.' };
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
-    setSession(null);
+    try {
+      if (session) await apiWrite('/auth/logout', 'POST', {});
+    } finally {
+      clearUserSession();
+      setProfile(null);
+      setUser(null);
+      setSession(null);
+      setLoading(false);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user: session?.user ?? null, session, profile, loading, signIn, signUp, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, profile, loading, signIn, signUp, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

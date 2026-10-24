@@ -1,17 +1,52 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.OpenApi.Models;
 using Synora.Server.Api;
+using Synora.Server.Api.UserManagement;
 using Synora.Server.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSynoraInfrastructure();
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Synora API",
+        Version = "v1"
+    });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "opaque session token",
+        In = ParameterLocation.Header,
+        Description = "Enter an access token issued by POST /api/auth/login."
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
-builder.Services.AddHttpClient(SupabaseTokenAuthenticationHandler.HttpClientName);
 builder.Services
-    .AddAuthentication(SupabaseTokenAuthenticationHandler.SchemeName)
-    .AddScheme<AuthenticationSchemeOptions, SupabaseTokenAuthenticationHandler>(
-        SupabaseTokenAuthenticationHandler.SchemeName, _ => { });
+    .AddAuthentication(UserSessionAuthenticationHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, UserSessionAuthenticationHandler>(
+        UserSessionAuthenticationHandler.SchemeName, _ => { });
 builder.Services.AddAuthorization();
+builder.Services.AddUserManagement();
 
 var configuredOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
 builder.Services.AddCors(options => options.AddPolicy("client", policy =>
@@ -28,28 +63,17 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
 app.UseCors("client");
+app.UseDatabaseExceptionHandling();
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseDatabaseExceptionHandling();
-app.MapGet("/health", async (
-    ApiDatabaseProvider database,
-    CancellationToken cancellationToken) =>
-{
-    var health = await DatabaseHealthService.CheckAsync(database, cancellationToken);
-    return health.IsConnected
-        ? Results.Ok(new { status = "ok", database = "connected" })
-        : Results.Problem(
-            title: health.IsConfigured ? "Database unavailable" : "Database is not configured",
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-});
-
-var api = app.MapGroup("/api").RequireAuthorization();
-api.MapProfileEndpoints();
-api.MapPatientDataEndpoints();
-api.MapLabOcrEndpoints();
-api.MapDashboardEndpoints();
-api.MapDoctorEndpoints();
+app.MapControllers();
 
 app.Run();
 

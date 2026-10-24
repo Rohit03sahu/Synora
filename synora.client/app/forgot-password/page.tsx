@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase-client';
+import { apiPublicWrite } from '@/lib/api-client';
 
 export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
@@ -18,14 +18,15 @@ export default function ForgotPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      await apiPublicWrite('/auth/password-reset', { email });
+      setSent(true);
+      toast.success('If an account exists, a password reset link has been sent.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not request a password reset.');
+    } finally {
+      setLoading(false);
     }
-    setSent(true);
-    toast.success('Password reset link sent');
   };
 
   return (
