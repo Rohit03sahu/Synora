@@ -4,6 +4,19 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$ROOT_DIR"
 
+if [ "${1:-}" = "--local" ]; then
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    printf '%s\n' "Node.js and npm are required for local mode." >&2
+    exit 1
+  fi
+  if [ ! -d tools/local-postgres/node_modules/@electric-sql/pglite ] ||
+    [ ! -d tools/local-postgres/node_modules/@electric-sql/pglite-socket ]; then
+    printf '%s\n' "Local database dependencies are missing. Run npm ci --prefix tools/local-postgres first." >&2
+    exit 1
+  fi
+  exec node tools/local-postgres/run-local.mjs
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
   printf '%s\n' "Docker is required. Install Docker Desktop and try again." >&2
   exit 1

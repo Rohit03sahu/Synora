@@ -16,13 +16,14 @@ public sealed class UserManagementController(UserManagementService users) : Cont
         CancellationToken cancellationToken) =>
         Execute(async () =>
         {
-            await users.RegisterAsync(
+            var emailVerificationRequired = await users.RegisterAsync(
                 request.Email,
                 request.Password,
                 request.FullName,
                 request.Phone,
+                request.AccountType,
                 cancellationToken);
-            return Accepted();
+            return Accepted(new { emailVerificationRequired });
         });
 
     [AllowAnonymous]
@@ -30,9 +31,13 @@ public sealed class UserManagementController(UserManagementService users) : Cont
     public Task<IActionResult> VerifyEmail(
         [FromBody] AccountTokenRequest request,
         CancellationToken cancellationToken) =>
-        Execute(async () => await users.VerifyEmailAsync(request.Token, cancellationToken)
-            ? NoContent()
-            : Problem(statusCode: StatusCodes.Status400BadRequest, detail: "This verification link is invalid or expired."));
+        Execute(async () =>
+        {
+            var accountType = await users.VerifyEmailAsync(request.Token, cancellationToken);
+            return accountType is null
+                ? Problem(statusCode: StatusCodes.Status400BadRequest, detail: "This verification link is invalid or expired.")
+                : Ok(new { accountType });
+        });
 
     [AllowAnonymous]
     [HttpPost("resend-verification")]
@@ -52,7 +57,11 @@ public sealed class UserManagementController(UserManagementService users) : Cont
         CancellationToken cancellationToken) =>
         Execute(async () =>
         {
-            var session = await users.SignInAsync(request.Email, request.Password, cancellationToken);
+            var session = await users.SignInAsync(
+                request.Email,
+                request.Password,
+                request.AccountType,
+                cancellationToken);
             return Ok(new { accessToken = session.AccessToken, expiresAt = session.ExpiresAt });
         });
 
@@ -164,6 +173,9 @@ public sealed class RegisterRequest
 
     [StringLength(40)]
     public string? Phone { get; init; }
+
+    [Required, RegularExpression("^(patient|doctor)$")]
+    public string AccountType { get; init; } = "patient";
 }
 
 public sealed class SignInRequest
@@ -173,6 +185,9 @@ public sealed class SignInRequest
 
     [Required, StringLength(128)]
     public required string Password { get; init; }
+
+    [Required, RegularExpression("^(patient|doctor)$")]
+    public string AccountType { get; init; } = "patient";
 }
 
 public sealed class EmailRequest

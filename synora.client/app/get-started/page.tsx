@@ -102,7 +102,7 @@ export default function GetStartedPage() {
 
             <div className="flex justify-center">
               <Button size="lg" disabled={!selected} onClick={handleContinue} className="min-w-[200px]">
-                {selected === 'patient' ? 'Start assessment' : selected === 'doctor' ? 'Clinician sign-in' : selected ? 'Explore organization access' : 'Choose a path'}
+                {selected === 'patient' ? 'Start assessment' : selected === 'doctor' ? 'Clinician registration' : selected ? 'Explore organization access' : 'Choose a path'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>

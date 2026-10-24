@@ -14,7 +14,7 @@ public static class ProfileDatabaseOperations
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         await using var select = new NpgsqlCommand(
             """
-            SELECT id, email, full_name, phone, role, created_at, phone_confirmed_at
+            SELECT id, email, full_name, phone, role, created_at, phone_confirmed_at, account_type
             FROM profiles
             WHERE id = $1
             """,
@@ -37,6 +37,7 @@ public static class ProfileDatabaseOperations
             phoneConfirmedAt = reader.IsDBNull(6)
                 ? (DateTimeOffset?)null
                 : reader.GetFieldValue<DateTimeOffset>(6),
+            accountType = reader.GetString(7),
         });
     }
 

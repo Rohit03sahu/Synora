@@ -57,7 +57,8 @@ export default function SignUpPage() {
     e.preventDefault();
     if (!allConsents || !userType || !passwordsMatch) return;
     setLoading(true);
-    const { error } = await signUp(email, password, name, mobile);
+    const { error, emailVerificationRequired } =
+      await signUp(email, password, name, mobile, 'patient');
     if (error) {
       if (error.startsWith('Your account was created,')) {
         router.push(`/verify-email?email=${encodeURIComponent(email.trim())}&delivery=failed`);
@@ -68,8 +69,13 @@ export default function SignUpPage() {
       setLoading(false);
       return;
     }
-    toast.success('Account created. Check your email to verify it before signing in.');
-    router.push(`/verify-email?email=${encodeURIComponent(email.trim())}`);
+    if (emailVerificationRequired) {
+      toast.success('Account created. Check your email to verify it before signing in.');
+      router.push(`/verify-email?email=${encodeURIComponent(email.trim())}`);
+    } else {
+      toast.success('Account created. You can now sign in.');
+      router.push('/sign-in');
+    }
   };
 
   return (

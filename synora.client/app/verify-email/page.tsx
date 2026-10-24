@@ -6,15 +6,17 @@ import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { AuthLayout } from '@/components/shared/auth-layout';
 import { Button } from '@/components/ui/button';
-import { apiPublicWrite } from '@/lib/api-client';
+import { apiPublicSend, apiPublicWrite } from '@/lib/api-client';
 
 export default function VerifyEmailPage() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
   const email = searchParams.get('email');
+  const requestedAccountType = searchParams.get('accountType') === 'doctor' ? 'doctor' : 'patient';
   const deliveryFailed = searchParams.get('delivery') === 'failed';
   const checkedToken = useRef<string | null>(null);
   const [status, setStatus] = useState<'checking' | 'waiting' | 'verified' | 'failed'>('checking');
+  const [accountType, setAccountType] = useState<'patient' | 'doctor'>(requestedAccountType);
   const [resending, setResending] = useState(false);
 
   useEffect(() => {
@@ -25,8 +27,11 @@ export default function VerifyEmailPage() {
     if (checkedToken.current === token) return;
     checkedToken.current = token;
 
-    apiPublicWrite('/auth/verify-email', { token })
-      .then(() => setStatus('verified'))
+    apiPublicSend<{ accountType: 'patient' | 'doctor' }>('/auth/verify-email', { token })
+      .then((result) => {
+        setAccountType(result.accountType);
+        setStatus('verified');
+      })
       .catch(() => setStatus('failed'));
   }, [token, email]);
 
@@ -66,7 +71,9 @@ export default function VerifyEmailPage() {
         )}
         {status === 'verified' && <p className="text-sm text-success">You can now sign in with your email and password.</p>}
         <Button asChild className="w-full">
-          <Link href="/sign-in">Continue to sign in</Link>
+          <Link href={accountType === 'doctor' ? '/doctor-sign-in' : '/sign-in'}>
+            Continue to sign in
+          </Link>
         </Button>
       </div>
     </AuthLayout>

@@ -17,6 +17,7 @@ interface Profile {
   phone: string | null;
   phone_confirmed_at: string | null;
   role: UserRole | 'platform_admin';
+  accountType: 'patient' | 'doctor';
 }
 
 interface User {
@@ -31,8 +32,8 @@ interface AuthContextValue {
   session: UserSession | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, fullName: string, phone: string) => Promise<{ error: string | null }>;
+  signIn: (email: string, password: string, accountType: 'patient' | 'doctor') => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, fullName: string, phone: string, accountType: 'patient' | 'doctor') => Promise<{ error: string | null; emailVerificationRequired: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -54,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         phone: string | null;
         phoneConfirmedAt: string | null;
         role: UserRole | 'platform_admin';
+        accountType: 'patient' | 'doctor';
       }>('/me');
       setProfile({
         id: data.id,
@@ -62,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         phone: data.phone,
         phone_confirmed_at: data.phoneConfirmedAt,
         role: data.role,
+        accountType: data.accountType,
       });
       setUser({
         id: data.id,
@@ -101,9 +104,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session) await loadProfile();
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, accountType: 'patient' | 'doctor') => {
     try {
-      const result = await apiPublicSend<UserSession>('/auth/login', { email, password });
+      const result = await apiPublicSend<UserSession>('/auth/login', { email, password, accountType });
       saveUserSession(result);
       setSession(result);
       setLoading(true);
@@ -119,17 +122,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullName: string,
     phone: string,
+    accountType: 'patient' | 'doctor',
   ) => {
     try {
-      await apiPublicWrite('/auth/register', {
+      const result = await apiPublicSend<{ emailVerificationRequired: boolean }>('/auth/register', {
         email,
         password,
         fullName,
         phone: phone.trim() || null,
+        accountType,
       });
-      return { error: null };
+      return { error: null, emailVerificationRequired: result.emailVerificationRequired };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : 'Could not create the account.' };
+      return {
+        error: error instanceof Error ? error.message : 'Could not create the account.',
+        emailVerificationRequired: false,
+      };
     }
   };
 

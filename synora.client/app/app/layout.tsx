@@ -14,14 +14,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const featureDisabled =
     (pathname.startsWith('/app/hospital') && !enabledFeatures.hospitals) ||
     (pathname.startsWith('/app/wellness') && !enabledFeatures.wellness);
+  const signInPath = pathname.startsWith('/app/doctor') ? '/doctor-sign-in' : '/sign-in';
 
   useEffect(() => {
     if (!loading && !session) {
-      router.push('/sign-in');
+      router.push(signInPath);
     } else if (!loading && session && featureDisabled) {
       router.replace('/app/patient');
     }
-  }, [loading, session, featureDisabled, router]);
+  }, [loading, session, featureDisabled, signInPath, router]);
 
   if (loading) {
     return (

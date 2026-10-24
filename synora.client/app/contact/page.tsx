@@ -22,7 +22,7 @@ export default function ContactPage() {
             <Stethoscope className="h-5 w-5 text-primary" aria-hidden="true" />
             <h2 className="mt-4 text-lg font-semibold">Clinician access</h2>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Ask your healthcare organization administrator to provision clinical access. If you already have an account, sign in here.</p>
-            <Link href="/sign-in" className="mt-5 inline-flex items-center text-sm font-semibold text-primary hover:underline">Clinician sign-in <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            <Link href="/doctor-sign-in" className="mt-5 inline-flex items-center text-sm font-semibold text-primary hover:underline">Clinician sign-in <ArrowRight className="ml-2 h-4 w-4" /></Link>
             <p className="mt-3 text-sm text-muted-foreground">New to GenoGluco?</p>
             <Link href="/doctor-sign-up" className="mt-1 inline-flex items-center text-sm font-semibold text-primary hover:underline">Register as a clinician <ArrowRight className="ml-2 h-4 w-4" /></Link>
           </div>

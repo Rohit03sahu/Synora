@@ -20,6 +20,8 @@ public static class DoctorDatabaseOperations
     {
         var userId = ApiUser.Id(principal);
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
+        if (await GetAccountTypeAsync(connection, userId, cancellationToken) != "doctor")
+            return Results.Forbid();
         await using var command = new NpgsqlCommand("""
             SELECT p.full_name, dp.specialty, dp.qualifications, dp.registration_number,
                    dp.issuing_council, dp.experience_years, dp.expertise, dp.affiliation,
@@ -48,8 +50,8 @@ public static class DoctorDatabaseOperations
         if (!IsValidDoctorProfile(request)) return Validation("Review required profile fields and values.");
         var userId = ApiUser.Id(principal);
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
-        var role = await GetRoleAsync(connection, userId, cancellationToken);
-        if (role is not ("patient" or "doctor")) return Results.Forbid();
+        if (await GetAccountTypeAsync(connection, userId, cancellationToken) != "doctor")
+            return Results.Forbid();
         await using var existing = new NpgsqlCommand(
             "SELECT verification_status FROM doctor_profiles WHERE user_id = $1", connection);
         existing.Parameters.AddWithValue(userId);
@@ -108,8 +110,8 @@ public static class DoctorDatabaseOperations
 
         var userId = ApiUser.Id(principal);
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
-        var role = await GetRoleAsync(connection, userId, cancellationToken);
-        if (role is not ("patient" or "doctor")) return Results.Forbid();
+        if (await GetAccountTypeAsync(connection, userId, cancellationToken) != "doctor")
+            return Results.Forbid();
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             INSERT INTO doctor_profiles(user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING;
@@ -137,17 +139,8 @@ public static class DoctorDatabaseOperations
     {
         var userId = ApiUser.Id(principal);
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
-        var role = await GetRoleAsync(connection, userId, cancellationToken);
-        if (role is not ("patient" or "doctor")) return Results.Forbid();
-        await using (var phone = new NpgsqlCommand(
-            "SELECT phone FROM profiles WHERE id=$1 AND phone_confirmed_at IS NOT NULL",
-            connection))
-        {
-            phone.Parameters.AddWithValue(userId);
-            var profilePhone = await phone.ExecuteScalarAsync(cancellationToken) as string;
-            if (string.IsNullOrWhiteSpace(profilePhone))
-                return Results.Conflict(new { message = "Verify your mobile number with the SMS code before submitting." });
-        }
+        if (await GetAccountTypeAsync(connection, userId, cancellationToken) != "doctor")
+            return Results.Forbid();
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             UPDATE doctor_profiles SET verification_status='pending_verification', submitted_at=now(),
@@ -155,7 +148,6 @@ public static class DoctorDatabaseOperations
             WHERE user_id=$1 AND verification_status IN ('draft','rejected')
               AND specialty <> '' AND qualifications <> '' AND registration_number <> ''
               AND issuing_council <> '' AND biography <> ''
-              AND EXISTS (SELECT 1 FROM doctor_credential_documents d WHERE d.doctor_id=$1)
             RETURNING user_id
             """, connection, transaction);
         command.Parameters.AddWithValue(userId);
@@ -163,9 +155,9 @@ public static class DoctorDatabaseOperations
         if (submitted is null)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return Results.Conflict(new { message = "Complete the required profile fields and upload at least one credential before submitting." });
+            return Results.Conflict(new { message = "Complete the required professional profile fields before submitting." });
         }
-        await NotifyAdminsAsync(connection, transaction, "doctor_application", "Doctor application submitted", "A clinician profile is ready for credential review.", userId, cancellationToken);
+        await NotifyAdminsAsync(connection, transaction, "doctor_application", "Doctor application submitted", "A clinician profile is ready for administrator review.", userId, cancellationToken);
         await AddAuditAsync(connection, transaction, userId, "Doctor application submitted", Actor(principal), cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Results.Accepted(value: new { status = "pending_verification" });
@@ -707,7 +699,8 @@ public static class DoctorDatabaseOperations
         await using var command = new NpgsqlCommand("""
             SELECT p.id, p.full_name, p.email, dp.specialty, dp.qualifications, dp.registration_number,
               dp.issuing_council, dp.experience_years, dp.affiliation, dp.verification_status,
-              dp.submitted_at, dp.review_note,
+              dp.submitted_at, dp.review_note, p.phone, dp.biography, dp.languages,
+              dp.clinic_address, dp.consultation_modes, dp.consultation_fee,
               (SELECT count(*) FROM doctor_credential_documents d WHERE d.doctor_id=dp.user_id) AS document_count
             FROM doctor_profiles dp JOIN profiles p ON p.id=dp.user_id
             WHERE ($1::text IS NULL OR dp.verification_status=$1)
@@ -722,7 +715,12 @@ public static class DoctorDatabaseOperations
             qualifications=reader.GetString(4), registrationNumber=reader.GetString(5), issuingCouncil=reader.GetString(6),
             experienceYears=reader.GetInt16(7), affiliation=reader.GetString(8), status=reader.GetString(9),
             submittedAt=reader.IsDBNull(10)?(DateTimeOffset?)null:reader.GetFieldValue<DateTimeOffset>(10),
-            reviewNote=reader.IsDBNull(11)?null:reader.GetString(11), documentCount=reader.GetInt64(12)
+            reviewNote=reader.IsDBNull(11)?null:reader.GetString(11),
+            phone=reader.IsDBNull(12)?null:reader.GetString(12), biography=reader.GetString(13),
+            languages=reader.GetFieldValue<string[]>(14), clinicAddress=reader.GetString(15),
+            consultationModes=reader.GetFieldValue<string[]>(16),
+            consultationFee=reader.IsDBNull(17)?(decimal?)null:reader.GetDecimal(17),
+            documentCount=reader.GetInt64(18)
         });
         return Results.Ok(applications);
     }
@@ -780,15 +778,13 @@ public static class DoctorDatabaseOperations
             UPDATE doctor_profiles SET verification_status=$2, review_note=$3,
               reviewed_by=$4, reviewed_at=now(), updated_at=now()
             WHERE user_id=$1 AND verification_status='pending_verification'
-              AND ($2='rejected' OR EXISTS (SELECT 1 FROM doctor_credential_documents d
-                WHERE d.doctor_id=$1 AND d.review_status<>'rejected'))
             """, connection, transaction);
         command.Parameters.AddWithValue(doctorId);
         command.Parameters.AddWithValue(request.Decision);
         command.Parameters.AddWithValue((object?)request.Note?.Trim() ?? DBNull.Value);
         command.Parameters.AddWithValue(adminId);
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
-            return Results.Conflict(new { message = "This application is not pending or has no reviewable credential documents." });
+            return Results.Conflict(new { message = "This application is not pending review." });
         await using (var updateRole = new NpgsqlCommand(
             "UPDATE profiles SET role=$2 WHERE id=$1", connection, transaction))
         {
@@ -898,6 +894,14 @@ public static class DoctorDatabaseOperations
         await using var command = new NpgsqlCommand("SELECT role FROM profiles WHERE id=$1", connection);
         command.Parameters.AddWithValue(userId);
         return await command.ExecuteScalarAsync(cancellationToken) as string ?? "patient";
+    }
+
+    private static async Task<string?> GetAccountTypeAsync(
+        NpgsqlConnection connection, Guid userId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("SELECT account_type FROM profiles WHERE id=$1", connection);
+        command.Parameters.AddWithValue(userId);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
     }
 
     private static async Task<bool> IsConversationParticipantAsync(

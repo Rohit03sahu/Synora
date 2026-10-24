@@ -44,7 +44,7 @@ const patientNav = [
 
 const doctorNav = [
   { label: 'Dashboard', href: '/app/doctor', icon: LayoutDashboard },
-  { label: 'Doctor Profile', href: '/doctor-onboarding', icon: Stethoscope },
+  { label: 'Doctor Profile', href: '/app/doctor/profile', icon: Stethoscope },
   { label: 'Consultation Requests', href: '/app/doctor/requests', icon: MessageCircle },
   { label: 'Messages', href: '/app/messages', icon: MessageCircle },
   { label: 'Patients', href: '/app/doctor/patients', icon: User },
@@ -100,7 +100,7 @@ export function AppSidebar() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.push('/sign-in');
+    router.push(pathname.startsWith('/app/doctor') ? '/doctor-sign-in' : '/sign-in');
   };
 
   const sidebarContent = (

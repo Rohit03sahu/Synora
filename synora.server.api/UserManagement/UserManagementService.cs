@@ -18,22 +18,27 @@ public sealed class UserManagementService(
     ApiDatabaseProvider database,
     IAccountEmailSender emailSender,
     IAccountSmsSender smsSender,
-    ILogger<UserManagementService> logger)
+    ILogger<UserManagementService> logger,
+    IConfiguration configuration)
 {
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(7);
     private static readonly Regex E164Phone = new(@"^\+[1-9]\d{7,14}$", RegexOptions.Compiled);
     private static readonly string DummyPasswordHash = PasswordCredential.Hash("synora-invalid-login");
+    public bool EmailVerificationRequired { get; } =
+        configuration.GetValue("Authentication:RequireEmailVerification", false);
 
-    public async Task RegisterAsync(
+    public async Task<bool> RegisterAsync(
         string email,
         string password,
         string fullName,
         string? phone,
+        string accountType,
         CancellationToken cancellationToken)
     {
         email = NormalizeEmail(email);
         fullName = fullName.Trim();
-        if (fullName.Length == 0 || fullName.Length > 200 || phone is { Length: > 40 })
+        if (accountType is not ("patient" or "doctor") ||
+            fullName.Length == 0 || fullName.Length > 200 || phone is { Length: > 40 })
         {
             throw new UserManagementException(
                 StatusCodes.Status400BadRequest,
@@ -41,15 +46,15 @@ public sealed class UserManagementService(
         }
 
         var userId = Guid.NewGuid();
-        var token = AccountToken.Create();
+        var token = EmailVerificationRequired ? AccountToken.Create() : null;
 
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using (var insert = new NpgsqlCommand(
             """
             INSERT INTO profiles
-              (id, email, full_name, phone, password_hash, email_verified, account_status)
-            VALUES ($1, $2, $3, $4, $5, false, 'pending_verification')
+              (id, email, full_name, phone, password_hash, email_verified, account_status, account_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
             connection,
             transaction))
@@ -61,6 +66,10 @@ public sealed class UserManagementService(
                 NpgsqlDbType.Text,
                 (object?)phone?.Trim() ?? DBNull.Value);
             insert.Parameters.AddWithValue(PasswordCredential.Hash(password));
+            insert.Parameters.AddWithValue(!EmailVerificationRequired);
+            insert.Parameters.AddWithValue(
+                EmailVerificationRequired ? "pending_verification" : "active");
+            insert.Parameters.AddWithValue(accountType);
             try
             {
                 await insert.ExecuteNonQueryAsync(cancellationToken);
@@ -73,20 +82,28 @@ public sealed class UserManagementService(
             }
         }
 
-        await InsertActionTokenAsync(
-            connection,
-            transaction,
-            userId,
-            "email_verification",
-            token,
-            DateTimeOffset.UtcNow.AddHours(24),
-            cancellationToken);
+        if (token is not null)
+        {
+            await InsertActionTokenAsync(
+                connection,
+                transaction,
+                userId,
+                "email_verification",
+                token,
+                DateTimeOffset.UtcNow.AddHours(24),
+                cancellationToken);
+        }
         await transaction.CommitAsync(cancellationToken);
 
-        await SendVerificationEmailAsync(email, fullName, token, cancellationToken);
+        if (token is not null)
+        {
+            await SendVerificationEmailAsync(email, fullName, token, cancellationToken);
+        }
+
+        return EmailVerificationRequired;
     }
 
-    public async Task<bool> VerifyEmailAsync(string token, CancellationToken cancellationToken)
+    public async Task<string?> VerifyEmailAsync(string token, CancellationToken cancellationToken)
     {
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -108,7 +125,18 @@ public sealed class UserManagementService(
         if (userId is null)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return false;
+            return null;
+        }
+
+        string accountType;
+        await using (var select = new NpgsqlCommand(
+            "SELECT account_type FROM profiles WHERE id = $1",
+            connection,
+            transaction))
+        {
+            select.Parameters.AddWithValue(userId.Value);
+            accountType = (string?)await select.ExecuteScalarAsync(cancellationToken)
+                ?? throw new InvalidOperationException("The account for a valid verification token was not found.");
         }
 
         await using (var activate = new NpgsqlCommand(
@@ -126,7 +154,7 @@ public sealed class UserManagementService(
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return true;
+        return accountType;
     }
 
     public async Task ResendVerificationEmailAsync(string email, CancellationToken cancellationToken)
@@ -174,13 +202,13 @@ public sealed class UserManagementService(
     }
 
     public async Task<AccountSession> SignInAsync(
-        string email, string password, CancellationToken cancellationToken)
+        string email, string password, string accountType, CancellationToken cancellationToken)
     {
         email = NormalizeEmail(email);
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
-            SELECT id, password_hash, email_verified, account_status
+            SELECT id, password_hash, email_verified, account_status, account_type
             FROM profiles
             WHERE lower(email) = $1
             """,
@@ -197,6 +225,7 @@ public sealed class UserManagementService(
         var passwordHash = reader.IsDBNull(1) ? null : reader.GetString(1);
         var emailVerified = reader.GetBoolean(2);
         var accountStatus = reader.GetString(3);
+        var storedAccountType = reader.GetString(4);
         await reader.CloseAsync();
 
         var passwordMatches = PasswordCredential.Verify(password, passwordHash ?? DummyPasswordHash);
@@ -204,10 +233,39 @@ public sealed class UserManagementService(
         {
             throw new UserManagementException(StatusCodes.Status401Unauthorized, "Email or password is incorrect.");
         }
-        if (!emailVerified)
+        if (accountType is not ("patient" or "doctor") || storedAccountType != accountType)
+        {
+            var expectedPortal = storedAccountType == "doctor" ? "clinician" : "patient";
+            throw new UserManagementException(
+                StatusCodes.Status403Forbidden,
+                $"This account uses the {expectedPortal} sign-in. Choose the matching sign-in page.");
+        }
+        if (EmailVerificationRequired && !emailVerified)
         {
             throw new UserManagementException(StatusCodes.Status403Forbidden, "Confirm your email address before signing in.");
         }
+
+        if (!EmailVerificationRequired && !emailVerified)
+        {
+            await using var activate = new NpgsqlCommand(
+                """
+                UPDATE profiles
+                SET email_verified = true,
+                    account_status = CASE
+                        WHEN account_status = 'pending_verification' THEN 'active'
+                        ELSE account_status
+                    END
+                WHERE id = $1
+                """,
+                connection);
+            activate.Parameters.AddWithValue(userId);
+            await activate.ExecuteNonQueryAsync(cancellationToken);
+            if (accountStatus == "pending_verification")
+            {
+                accountStatus = "active";
+            }
+        }
+
         if (accountStatus != "active")
         {
             throw new UserManagementException(StatusCodes.Status403Forbidden, "This account is not active.");
